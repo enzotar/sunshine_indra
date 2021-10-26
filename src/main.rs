@@ -77,7 +77,12 @@ fn main() {
 //   CRDT? message queue?
 // optimal way to implement?
 // quick and dirty?
+// https://hex.tech/blog/a-pragmatic-approach-to-live-collaboration
+// https://www.figma.com/blog/how-figmas-multiplayer-technology-works/
 //
+// https://github.com/davidrusu/bft-crdts
+// https://github.com/automerge/automerge-rs
+// https://wiki.nikitavoloboev.xyz/distributed-systems/crdt
 //
 // how other projects implement it
 // pijul
