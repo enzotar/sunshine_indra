@@ -1,4 +1,4 @@
-use sunshine_indra::{Config, CreateEdge, CreateVertex, Error, Msg, Reply, Result, Store};
+use sunshine_indra::{Config, CreateEdge, CreateVertex, Msg, Reply, Store};
 
 fn main() {
     let cfg = Config {
@@ -8,9 +8,7 @@ fn main() {
 
     let create_vertex = |properties: serde_json::Value| {
         let reply = store.execute(Msg::CreateVertex(CreateVertex {
-            properties: serde_json::json!({
-                "name": "first_vertex",
-            }),
+            properties,
             vertex_type: "vertex_type1".into(),
         }));
         match reply {
@@ -57,10 +55,34 @@ fn main() {
     println!("{:#?}", reply);
 }
 
-// editing existing edges
+// TODOs
+// clear database
 // read config from command line
-// tidy UUID in create edges
-// create edge better error display
-// thiserror
+// unit tests
+// ui initialization
+// cloud sync
+//
 
-// delete
+// optimization
+// clones and Strings
+
+// Basic search
+//  1. given a root node, get all children
+//     a. breath-first
+//     b. depth-first 3 levels
+//  2. query with multiple hops/pipe edge query
+
+// Multiplayer
+// what libraries exists
+//   CRDT?
+// optimal
+// quick and dirty
+//
+// how other projects implement it
+// pijul
+// xi-editor
+
+// Learn more about Indra
+// Pipe queries
+// https://crates.io/crates/indradb-proto
+// github/ozgrakkurt

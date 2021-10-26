@@ -1,8 +1,9 @@
 use indradb::{
-    Datastore, EdgeKey, MemoryDatastore, MemoryTransaction, RangeVertexQuery, SpecificVertexQuery,
-    Transaction, Type, Vertex, VertexPropertyQuery, VertexQuery, VertexQueryExt,
+    Datastore, EdgeKey, EdgePropertyQuery, MemoryDatastore, MemoryTransaction, SpecificEdgeQuery,
+    SpecificVertexQuery, Transaction, Type, VertexPropertyQuery, VertexQuery, VertexQueryExt,
 };
 use serde_json::Value as JsonValue;
+use std::convert::TryInto;
 use uuid::Uuid;
 
 mod error;
@@ -28,10 +29,46 @@ impl Store {
             Msg::CreateVertex(msg) => Reply::from_id(self.create_vertex(msg)),
             Msg::ReadVertex(msg) => Reply::from_vertex_info(self.read_vertex(msg)),
             Msg::UpdateVertex(msg) => Reply::from_empty(self.update_vertex(msg)),
+            Msg::DeleteVertex(msg) => Reply::from_empty(self.delete_vertex(msg)),
             Msg::CreateEdge(msg) => Reply::from_empty(self.create_edge(msg)),
-            _ => todo!(),
+            Msg::ReadEdge(msg) => Reply::from_edge_info(self.read_edge(msg)),
+            Msg::UpdateEdge(msg) => Reply::from_empty(self.update_edge(msg)),
+            Msg::DeleteEdge(msg) => Reply::from_empty(self.delete_edge(msg)),
+            Msg::ReverseEdge(_msg) => todo!(),
+            Msg::ClearDatabase => Reply::from_empty(self.clear_database()),
+            // Msg::Init => Reply::from_db_state(self.init()),
         }
     }
+
+    // fn init(&self) -> Result<DbState> {
+    //     let trans = self.transaction()?;
+    //     let query = RangeVertexQuery {
+    //         limit: 0,
+    //         t: None,
+    //         start_id: None,
+    //     };
+    //     let vertices = trans
+    //         .get_vertices(query)
+    //         .map_err(Error::GetVertices)?
+    //         .into_iter()
+    //         .map(|vertex| self.read_vertex(vertex.id.into()))
+    //         .collect();
+
+    //     let edges = raw_vertices
+    //         .into_iter()
+    //         .map(|vert| {
+    //             let query = SpecificVertexQuery { ids: vec![vert.id] };
+    //             trans
+    //                 .get_edges(query.outbound())
+    //                 .map_err(Error::GetEdgesOfVertex)?
+    //                 .into_iter()
+    //         })
+    //         .chain()
+    //         .map(|edge| self.read_edge(EdgeId::from(edge.key)))
+    //         .collect();
+
+    //     Ok(DbState { edges, vertices })
+    // }
 
     fn create_vertex(&self, msg: CreateVertex) -> Result<String> {
         let trans = self.transaction()?;
@@ -62,22 +99,17 @@ impl Store {
             .map_err(Error::GetVertices)?;
         assert_eq!(properties.len(), 1);
         let properties = properties.pop().unwrap().props.pop().unwrap().value;
-        let convert_edge = |edge: indradb::Edge| EdgeId {
-            from: edge.key.outbound_id.to_string(),
-            to: edge.key.inbound_id.to_string(),
-            edge_type: edge.key.t.0,
-        };
         let outbound_edges = trans
             .get_edges(outbound_query)
             .map_err(Error::GetEdgesOfVertex)?
             .into_iter()
-            .map(convert_edge)
+            .map(|edge| EdgeId::from(edge.key))
             .collect();
         let inbound_edges = trans
             .get_edges(inbound_query)
             .map_err(Error::GetEdgesOfVertex)?
             .into_iter()
-            .map(convert_edge)
+            .map(|edge| EdgeId::from(edge.key))
             .collect();
         Ok(VertexInfo {
             outbound_edges,
@@ -101,6 +133,24 @@ impl Store {
             .map_err(Error::UpdateVertex)
     }
 
+    // deletes inbound and outbound edges as well
+    fn delete_vertex(&self, vertex_id: VertexId) -> Result<()> {
+        let trans = self.transaction()?;
+        let uuid = Uuid::parse_str(vertex_id.as_str())?;
+        let query = SpecificVertexQuery { ids: vec![uuid] };
+        let outbound_query = query.clone().outbound();
+        let inbound_query = query.clone().inbound();
+        trans
+            .delete_edges(outbound_query)
+            .map_err(Error::DeleteOutboundEdges)?;
+        trans
+            .delete_edges(inbound_query)
+            .map_err(Error::DeleteInboundEdges)?;
+        trans
+            .delete_vertices(VertexQuery::Specific(query))
+            .map_err(Error::DeleteVertex)
+    }
+
     fn create_edge(&self, msg: CreateEdge) -> Result<()> {
         let trans = self.transaction()?;
         let edge_type = Type::new(msg.edge_type).map_err(|_| Error::TypeNameTooLong)?;
@@ -109,12 +159,62 @@ impl Store {
             inbound_id: Uuid::parse_str(msg.to.as_str())?,
             t: edge_type,
         };
-        if !trans
-            .create_edge(&edge_key)
-            .map_err(|e| Error::CreateEdge(Some(e)))?
-        {
-            return Err(Error::CreateEdge(None));
-        }
+        let query = SpecificEdgeQuery {
+            keys: vec![edge_key],
+        };
+        let query = EdgePropertyQuery {
+            inner: query.into(),
+            name: PROP_NAME.into(),
+        };
+        trans
+            .set_edge_properties(query, &msg.properties)
+            .map_err(Error::SetEdgeProperties)?;
+
+        Ok(())
+    }
+
+    fn read_edge(&self, msg: EdgeId) -> Result<EdgeInfo> {
+        let trans = self.transaction()?;
+        let edge_key = msg.try_into()?;
+        let query = SpecificEdgeQuery {
+            keys: vec![edge_key],
+        };
+        let query = EdgePropertyQuery {
+            inner: query.into(),
+            name: PROP_NAME.into(),
+        };
+        let mut properties = trans
+            .get_edge_properties(query)
+            .map_err(Error::GetEdgeProperties)?;
+        assert_eq!(properties.len(), 1);
+        let properties = properties.pop().unwrap().value;
+        Ok(properties)
+    }
+
+    fn update_edge(&self, (edge_id, value): (EdgeId, JsonValue)) -> Result<()> {
+        let trans = self.transaction()?;
+        let edge_key = edge_id.try_into()?;
+        let query = SpecificEdgeQuery {
+            keys: vec![edge_key],
+        };
+        let query = EdgePropertyQuery {
+            inner: query.into(),
+            name: PROP_NAME.into(),
+        };
+        trans
+            .set_edge_properties(query, &value)
+            .map_err(Error::UpdateEdgeProperties)?;
+
+        Ok(())
+    }
+
+    fn delete_edge(&self, msg: EdgeId) -> Result<()> {
+        let trans = self.transaction()?;
+        let edge_key = msg.try_into()?;
+        let query = SpecificEdgeQuery {
+            keys: vec![edge_key],
+        };
+        trans.delete_edges(query).map_err(Error::DeleteEdge)?;
         Ok(())
     }
 
@@ -123,9 +223,14 @@ impl Store {
             .transaction()
             .map_err(Error::CreateTransaction)
     }
+
+    fn clear_database(&self) -> Result<()> {
+        todo!()
+    }
 }
 
 pub enum Msg {
+    // Init,
     CreateVertex(CreateVertex),
     ReadVertex(VertexId),
     UpdateVertex((VertexId, JsonValue)),
@@ -135,8 +240,9 @@ pub enum Msg {
     UpdateEdge((EdgeId, JsonValue)),
     DeleteEdge(EdgeId),
     ReverseEdge(EdgeId),
-    GetEdgesOfVertex(VertexId),
+    ClearDatabase,
 }
+
 pub struct CreateVertex {
     pub vertex_type: String,
     pub properties: JsonValue,
@@ -166,40 +272,72 @@ pub struct EdgeId {
     pub edge_type: String,
 }
 
+impl From<EdgeKey> for EdgeId {
+    fn from(edge_key: EdgeKey) -> EdgeId {
+        EdgeId {
+            from: edge_key.outbound_id.to_string(),
+            to: edge_key.inbound_id.to_string(),
+            edge_type: edge_key.t.0,
+        }
+    }
+}
+
+impl TryInto<EdgeKey> for EdgeId {
+    type Error = Error;
+
+    fn try_into(self) -> Result<EdgeKey> {
+        Ok(EdgeKey {
+            outbound_id: Uuid::parse_str(&self.from)?,
+            inbound_id: Uuid::parse_str(&self.to)?,
+            t: Type(self.edge_type),
+        })
+    }
+}
+
+type EdgeInfo = JsonValue;
+
 #[derive(Debug)]
 pub enum Reply {
+    // DbState(DbState),
     Id(String),
     Error(String),
     VertexInfo(VertexInfo),
+    EdgeInfo(EdgeInfo),
     Empty,
+}
+
+struct DbState {
+    edges: Vec<EdgeInfo>,
+    vertices: Vec<VertexInfo>,
 }
 
 impl Reply {
     fn from_id(id: Result<String>) -> Reply {
         match id {
             Ok(id) => Reply::Id(id),
-            Err(e) => Reply::from(e),
+            Err(e) => Reply::Error(e.to_string()),
         }
     }
 
     fn from_empty(val: Result<()>) -> Reply {
         match val {
             Ok(_) => Reply::Empty,
-            Err(e) => Reply::from(e),
+            Err(e) => Reply::Error(e.to_string()),
         }
     }
 
     fn from_vertex_info(info: Result<VertexInfo>) -> Reply {
         match info {
             Ok(info) => Reply::VertexInfo(info),
-            Err(e) => Reply::from(e),
+            Err(e) => Reply::Error(e.to_string()),
         }
     }
-}
 
-impl From<Error> for Reply {
-    fn from(err: Error) -> Reply {
-        Reply::Error(format!("{:#?}", err))
+    fn from_edge_info(info: Result<EdgeInfo>) -> Reply {
+        match info {
+            Ok(info) => Reply::EdgeInfo(info),
+            Err(e) => Reply::Error(e.to_string()),
+        }
     }
 }
 
@@ -208,9 +346,16 @@ pub struct Config {
 }
 
 fn create_db(path: &str) -> std::result::Result<MemoryDatastore, bincode::Error> {
-    match MemoryDatastore::read(path) {
-        Ok(db) => return Ok(db),
-        Err(_) => (),
+    if let Ok(db) = MemoryDatastore::read(path) {
+        return Ok(db);
     }
     MemoryDatastore::create(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_vertex() {}
 }
