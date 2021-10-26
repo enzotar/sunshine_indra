@@ -56,27 +56,28 @@ fn main() {
 }
 
 // TODOs
-// clear database
+// clear database/ init
 // read config from command line
 // unit tests
 // ui initialization
 // cloud sync
 //
 
-// optimization
-// clones and Strings
-
 // Basic search
 //  1. given a root node, get all children
 //     a. breath-first
-//     b. depth-first 3 levels
+//     b. depth-first , e.g. 3 levels
 //  2. query with multiple hops/pipe edge query
+
+// optimization
+// clones and Strings
 
 // Multiplayer
 // what libraries exists
-//   CRDT?
-// optimal
-// quick and dirty
+//   CRDT? message queue?
+// optimal way to implement?
+// quick and dirty?
+//
 //
 // how other projects implement it
 // pijul
