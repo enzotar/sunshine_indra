@@ -92,3 +92,7 @@ fn main() {
 // Pipe queries
 // https://crates.io/crates/indradb-proto
 // github/ozgrakkurt
+
+// Use types for namespacing. For seperating projects, versions of the same project and for unit testing.
+// Every document has a counter and messages are sent with a counter value, if the count is lower than count on the current document update is rejected.
+// We keep last X number of messages in a buffer so we can do undo operations. Every message should have a reverse type.
