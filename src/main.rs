@@ -1,6 +1,7 @@
-use sunshine_indra::{Config, CreateEdge, CreateVertex, Msg, Reply, Store};
+//use sunshine_indra::{Config, CreateEdge, CreateVertex, Msg, Reply, Store};
 
 fn main() {
+    /*
     let cfg = Config {
         db_path: "newdb".into(),
     };
@@ -53,6 +54,7 @@ fn main() {
     let reply = store.execute(Msg::ReadVertex(id1));
 
     println!("{:#?}", reply);
+    */
 }
 
 // TODOs
@@ -62,11 +64,13 @@ fn main() {
 // ui initialization
 // cloud sync
 //
+// undo: Vec<Msg>, redo: Vec<Msg> , stateid
 
 // Basic search
 //  1. given a root node, get all children
 //     a. breath-first
 //     b. depth-first , e.g. 3 levels
+//     maybe example of algorithm https://crates.io/crates/graphsearch
 //  2. query with multiple hops/pipe edge query
 
 // optimization
@@ -96,3 +100,30 @@ fn main() {
 // Use types for namespacing. For seperating projects, versions of the same project and for unit testing.
 // Every document has a counter and messages are sent with a counter value, if the count is lower than count on the current document update is rejected.
 // We keep last X number of messages in a buffer so we can do undo operations. Every message should have a reverse type.
+
+// open project1.graph
+// type: project1 vertex, edges
+//
+// root node  : project1
+//  children nodes
+
+// undo/redo - do you delete or do you make a new state without?
+
+// saved_ops: HashMap<"name of op", Vec<Msg, Msg, Msg,>>,
+
+// timemachine slider
+// record every activity in timeseries db
+// templating
+// node, edge, node
+// ...
+// back in time, select node, edge, node, paste
+
+// create vertex
+// undo delete vertex / add redo
+// copy/paste
+// template
+
+// graph state using unique id uuid v4
+// hash == E-Tag Arangodb
+
+// load file, check specialhash, if equal, got version
