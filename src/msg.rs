@@ -1,4 +1,7 @@
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    store::Graph,
+};
 use indradb::{EdgeKey, Type};
 use serde_json::Value as JsonValue;
 use std::convert::TryInto;
@@ -6,6 +9,7 @@ use uuid::Uuid;
 
 // msg
 pub enum Msg {
+    CreateGraph,
     CreateVertex((GraphId, CreateVertex)),
     ReadVertex(VertexId),
     UpdateVertex((VertexId, JsonValue)),
@@ -21,8 +25,9 @@ pub enum Msg {
 pub type GraphId = String;
 
 pub enum Query {
-    Graph(String),
+    GetAll(String),
 }
+pub type VertexId = String;
 
 pub struct CreateVertex {
     pub vertex_type: String,
@@ -44,7 +49,7 @@ pub struct CreateEdge {
     pub properties: JsonValue,
 }
 
-pub type VertexId = String;
+pub type EdgeInfo = JsonValue;
 
 #[derive(Debug, Clone)]
 pub struct EdgeId {
@@ -75,21 +80,18 @@ impl TryInto<EdgeKey> for EdgeId {
     }
 }
 
-pub type EdgeInfo = JsonValue;
-
 #[derive(Debug)]
 pub enum Reply {
-    // DbState(DbState),
     Id(String),
     Error(String),
     VertexInfo(VertexInfo),
     EdgeInfo(EdgeInfo),
     Empty,
-    Graph(Graph),
+    Graph(GraphResult),
 }
 
 #[derive(Debug)]
-pub struct Graph {
+pub struct GraphResult {
     pub vertices: Vec<VertexInfo>,
 }
 
@@ -122,7 +124,7 @@ impl Reply {
         }
     }
 
-    pub fn from_graph(graph: Result<Graph>) -> Reply {
+    pub fn from_graph(graph: Result<GraphResult>) -> Reply {
         match graph {
             Ok(graph) => Reply::Graph(graph),
             Err(e) => Reply::Error(e.to_string()),

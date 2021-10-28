@@ -7,32 +7,74 @@ use std::convert::TryInto;
 use uuid::Uuid;
 
 use crate::msg::{
-    CreateEdge, CreateVertex, EdgeId, EdgeInfo, Graph, GraphId, Msg, Query, Reply, VertexId,
+    CreateEdge, CreateVertex, EdgeId, EdgeInfo, GraphId, GraphResult, Msg, Query, Reply, VertexId,
     VertexInfo,
 };
 
 use crate::error::{Error, Result};
 
 const PROP_NAME: &str = "data";
+const GRAPH_ROOT_TYPE: &str = "_root_type";
 
 #[derive(Debug)]
 pub struct Store {
     datastore: MemoryDatastore,
+    graph: Graph,
 }
 
-const GRAPH_ROOT_TYPE: &str = "_root_type";
+#[derive(Debug, Default)]
+pub struct Graph {
+    pub root_node_id: VertexId,
+}
+
+impl Graph {
+    fn new(store: &Store) -> Self {
+        let root_properties = serde_json::json!({
+            "name": "root_node",
+        });
+
+        let contruct_graph = |properties: serde_json::Value| {
+            let reply = store.execute(Msg::CreateVertex((
+                "1".into(),
+                CreateVertex {
+                    vertex_type: GRAPH_ROOT_TYPE.into(),
+                    properties,
+                },
+            )));
+            match reply {
+                Reply::Id(id) => id,
+                e => panic!("failed to create vertex: {:?}", e),
+            }
+        };
+
+        let graph_id = contruct_graph(root_properties);
+
+        Self {
+            root_node_id: graph_id,
+        }
+    }
+}
 
 impl Store {
     pub fn new(cfg: &Config) -> Result<Store> {
-        Ok(Store {
-            datastore: create_db(&cfg.db_path).map_err(Error::DatastoreCreateError)?,
-        })
+        let datastore = create_db(&cfg.db_path).map_err(Error::DatastoreCreateError)?;
+        let mut store = Store {
+            datastore: datastore,
+            graph: Graph::default(),
+        };
+        store.graph = Graph::new(&store);
+        Ok(store)
     }
+
+    // pub fn create_graph(&mut self) -> Result<VertexId> {
+    //     let graph = Graph::new(&self);
+    //     Ok(graph.root_node_id)
+    // }
 
     pub fn execute(&self, msg: Msg) -> Reply {
         match msg {
-            Msg::ListGraph => 
-            Msg::CreateGraph => 
+            // Msg::ListGraph =>
+            // Msg::CreateGraph => Reply::from_id(self.create_graph()),
             Msg::CreateVertex(msg) => Reply::from_id(self.create_vertex(msg)),
             Msg::ReadVertex(msg) => Reply::from_vertex_info(self.read_vertex(&msg)),
             Msg::UpdateVertex(msg) => Reply::from_empty(self.update_vertex(msg)),
@@ -41,51 +83,21 @@ impl Store {
             Msg::ReadEdge(msg) => Reply::from_edge_info(self.read_edge(msg)),
             Msg::UpdateEdge(msg) => Reply::from_empty(self.update_edge(msg)),
             Msg::DeleteEdge(msg) => Reply::from_empty(self.delete_edge(msg)),
-            Msg::Query(Query::Graph(msg)) => Reply::from_graph(self.graph(msg)),
+            Msg::Query(Query::GetAll(msg)) => Reply::from_graph(self.get_all_nodes_and_edges()),
             _ => todo!(),
         }
     }
 
-    fn graph(&self, graph_id: GraphId) -> Result<Graph> {
+    fn get_all_nodes_and_edges(&self) -> Result<GraphResult> {
         let vertices = self
-            .read_vertex(&graph_id)?
+            .read_vertex(&self.graph.root_node_id)?
             .outbound_edges
             .iter()
-            .map(|edge| self.read_vertex(&edge.to))
+            .map(|edge_id| self.read_vertex(&edge_id.to))
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(Graph { vertices })
+        Ok(GraphResult { vertices })
     }
-
-    // fn init(&self) -> Result<DbState> {
-    //     let trans = self.transaction()?;
-    //     let query = RangeVertexQuery {
-    //         limit: 0,
-    //         t: None,
-    //         start_id: None,
-    //     };
-    //     let vertices = trans
-    //         .get_vertices(query)
-    //         .map_err(Error::GetVertices)?
-    //         .into_iter()
-    //         .map(|vertex| self.read_vertex(vertex.id.into()))
-    //         .collect();
-
-    //     let edges = raw_vertices
-    //         .into_iter()
-    //         .map(|vert| {
-    //             let query = SpecificVertexQuery { ids: vec![vert.id] };
-    //             trans
-    //                 .get_edges(query.outbound())
-    //                 .map_err(Error::GetEdgesOfVertex)?
-    //                 .into_iter()
-    //         })
-    //         .chain()
-    //         .map(|edge| self.read_edge(EdgeId::from(edge.key)))
-    //         .collect();
-
-    //     Ok(DbState { edges, vertices })
-    // }
 
     fn create_vertex(&self, (_, msg): (GraphId, CreateVertex)) -> Result<String> {
         let trans = self.transaction()?;
@@ -255,4 +267,89 @@ fn create_db(path: &str) -> std::result::Result<MemoryDatastore, bincode::Error>
         return Ok(db);
     }
     MemoryDatastore::create(path)
+}
+
+#[test]
+fn test() {
+    let cfg = Config {
+        db_path: "newdb".into(),
+    };
+    let store = Store::new(&cfg).unwrap();
+    //
+    let create_vertex = |properties: serde_json::Value| {
+        let reply = store.execute(Msg::CreateVertex((
+            store.graph.root_node_id.clone(),
+            CreateVertex {
+                vertex_type: GRAPH_ROOT_TYPE.into(),
+                properties,
+            },
+        )));
+        match reply {
+            Reply::Id(id) => id,
+            e => panic!("failed to create vertex: {:?}", e),
+        }
+    };
+
+    let id1 = create_vertex(serde_json::json!({
+        "name": "first_vertex",
+    }));
+
+    let connect_to_root = store.execute(Msg::CreateEdge(CreateEdge {
+        directed: false,
+        from: store.graph.root_node_id.clone(),
+        edge_type: "edge_type1".into(),
+        to: id1.clone(),
+        properties: serde_json::json!({
+            "name": "first_edge",
+        }),
+    }));
+    dbg!(connect_to_root);
+
+    println!("{}", id1);
+
+    let reply = store.execute(Msg::UpdateVertex((
+        id1.clone(),
+        serde_json::json!({
+            "name": "updated_first_vertex",
+        }),
+    )));
+
+    println!("{:#?}", reply);
+
+    let id2 = create_vertex(serde_json::json!({
+        "name": "second_vertex",
+    }));
+    store.execute(Msg::CreateEdge(CreateEdge {
+        directed: false,
+        from: store.graph.root_node_id.clone(),
+        edge_type: "edge_type1".into(),
+        to: id2.clone(),
+        properties: serde_json::json!({
+            "name": "first_edge",
+        }),
+    }));
+
+    println!("{}", id2);
+
+    let reply = store.execute(Msg::CreateEdge(CreateEdge {
+        directed: false,
+        from: id1.clone(),
+        edge_type: "edge_type1".into(),
+        to: id2,
+        properties: serde_json::json!({
+            "name": "first_edge",
+        }),
+    }));
+
+    println!("{:#?}", reply);
+
+    let reply = store.execute(Msg::ReadVertex(id1.clone()));
+
+    println!("{:#?}", reply);
+
+    let read = store.read_vertex(&id1);
+    dbg! {read};
+
+    let get_all = store.get_all_nodes_and_edges();
+    dbg! {get_all};
 }
