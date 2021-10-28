@@ -1,7 +1,4 @@
-use crate::{
-    error::{Error, Result},
-    store::Graph,
-};
+use crate::error::{Error, Result};
 use indradb::{EdgeKey, Type};
 use serde_json::Value as JsonValue;
 use std::convert::TryInto;
@@ -9,8 +6,10 @@ use uuid::Uuid;
 
 // msg
 pub enum Msg {
-    CreateGraph,
-    CreateVertex((GraphId, CreateVertex)),
+    CreateGraph(JsonValue),
+    ListGraphs,
+    // DeleteGraph(GraphId),
+    CreateVertex(CreateVertex),
     ReadVertex(VertexId),
     UpdateVertex((VertexId, JsonValue)),
     DeleteVertex(VertexId),
@@ -22,11 +21,25 @@ pub enum Msg {
     Query(Query),
 }
 
+pub struct MsgWithGraphId {
+    pub msg: Msg,
+    pub graph_id: Option<GraphId>,
+}
+
+#[derive(Debug)]
+pub struct Graph {
+    pub vertices: Vec<VertexInfo>,
+    pub state_id: String,
+}
+
 pub type GraphId = String;
 
 pub enum Query {
-    GetAll(String),
+    ReadGraph((GraphId, StateId)),
 }
+
+pub type StateId = String;
+
 pub type VertexId = String;
 
 pub struct CreateVertex {
@@ -83,19 +96,29 @@ impl TryInto<EdgeKey> for EdgeId {
 #[derive(Debug)]
 pub enum Reply {
     Id(String),
+    VertexInfoList(Vec<VertexInfo>),
     Error(String),
     VertexInfo(VertexInfo),
     EdgeInfo(EdgeInfo),
+    Graph(Option<Graph>),
     Empty,
-    Graph(GraphResult),
-}
-
-#[derive(Debug)]
-pub struct GraphResult {
-    pub vertices: Vec<VertexInfo>,
 }
 
 impl Reply {
+    pub fn as_id(&self) -> Option<&str> {
+        match self {
+            Reply::Id(id) => Some(id.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn from_graph(graph: Result<Option<Graph>>) -> Reply {
+        match graph {
+            Ok(graph) => Reply::Graph(graph),
+            Err(e) => Reply::Error(e.to_string()),
+        }
+    }
+
     pub fn from_id(id: Result<String>) -> Reply {
         match id {
             Ok(id) => Reply::Id(id),
@@ -117,16 +140,16 @@ impl Reply {
         }
     }
 
-    pub fn from_edge_info(info: Result<EdgeInfo>) -> Reply {
+    pub fn from_vertex_info_list(info: Result<Vec<VertexInfo>>) -> Reply {
         match info {
-            Ok(info) => Reply::EdgeInfo(info),
+            Ok(info) => Reply::VertexInfoList(info),
             Err(e) => Reply::Error(e.to_string()),
         }
     }
 
-    pub fn from_graph(graph: Result<GraphResult>) -> Reply {
-        match graph {
-            Ok(graph) => Reply::Graph(graph),
+    pub fn from_edge_info(info: Result<EdgeInfo>) -> Reply {
+        match info {
+            Ok(info) => Reply::EdgeInfo(info),
             Err(e) => Reply::Error(e.to_string()),
         }
     }

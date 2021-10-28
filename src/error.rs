@@ -15,8 +15,8 @@ pub enum Error {
     GetVertices(indradb::Error),
     #[error("error while getting edges of a vertex: {0}.")]
     GetEdgesOfVertex(indradb::Error),
-    #[error("Custom type name too long. Maximum length is 255 ascii characters.")]
-    TypeNameTooLong,
+    #[error("Custom type name is invalid.")]
+    CreateType(indradb::ValidationError),
     #[error("error while parsing uuid: {0}.")]
     InvalidId(uuid::Error),
     #[error("error while creating edge: {0}.")]
