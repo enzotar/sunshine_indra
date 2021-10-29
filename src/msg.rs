@@ -4,26 +4,40 @@ use serde_json::Value as JsonValue;
 use std::convert::TryInto;
 use uuid::Uuid;
 
-// msg
+// pub struct MsgWithGraphId {
+//     pub msg: Msg,
+//     pub graph_id: GraphId,
+// }
+
 pub enum Msg {
+    MutateState,
+    ReadOnly,
+}
+
+pub enum MutateState {
     CreateGraph(JsonValue),
-    ListGraphs,
-    // DeleteGraph(GraphId),
+    DeleteGraph(GraphId),
     CreateVertex(CreateVertex),
-    ReadVertex(VertexId),
     UpdateVertex((VertexId, JsonValue)),
     DeleteVertex(VertexId),
     CreateEdge(CreateEdge),
-    ReadEdge(EdgeId),
     UpdateEdge((EdgeId, JsonValue)),
     DeleteEdge(EdgeId),
     ReverseEdge(EdgeId),
+}
+pub enum ReadOnly {
+    ListGraphs,
+    ReadVertex(VertexId),
+    ReadEdge(EdgeId),
     Query(Query),
 }
 
-pub struct MsgWithGraphId {
-    pub msg: Msg,
-    pub graph_id: Option<GraphId>,
+pub trait StateModifiers {
+    fn update_state() {}
+}
+
+impl StateModifiers for MutateState {
+    fn update_state() {}
 }
 
 #[derive(Debug)]
@@ -35,7 +49,7 @@ pub struct Graph {
 pub type GraphId = String;
 
 pub enum Query {
-    ReadGraph((GraphId, StateId)),
+    ReadGraph(GraphId),
 }
 
 pub type StateId = String;

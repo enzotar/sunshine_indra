@@ -68,6 +68,7 @@ fn main() {
 //
 
 // Basic search
+// https://crates.io/crates/pathfinding
 //  1. given a root node, get all children
 //     a. breath-first
 //     b. depth-first , e.g. 3 levels

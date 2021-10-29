@@ -7,10 +7,7 @@ use serde_json::Value as JsonValue;
 use std::convert::TryInto;
 use uuid::Uuid;
 
-use crate::msg::{
-    CreateEdge, CreateVertex, EdgeId, EdgeInfo, Graph, GraphId, Msg, MsgWithGraphId, Query, Reply,
-    StateId, VertexId, VertexInfo,
-};
+use crate::msg::{CreateEdge, CreateVertex, EdgeId, EdgeInfo, Graph, GraphId, Msg, MsgWithGraphId, MutateState, Query, Reply, StateId, VertexId, VertexInfo};
 
 use crate::error::{Error, Result};
 
@@ -37,30 +34,38 @@ impl Store {
         Ok(store)
     }
 
-    pub fn execute(&self, msg: MsgWithGraphId) -> Reply {
-        if let Some(graph_id) = msg.graph_id.clone() {
-            if let Err(e) = self.update_state_id(graph_id) {
-                return Reply::Error(e.to_string());
-            }
-        }
+    pub fn execute(&self, msg: Msg) -> Reply {
+        // if let Some(graph_id) = msg.graph_id.clone() {
+        //     if let Err(e) = self.update_state_id(graph_id) {
+        //         return Reply::Error(e.to_string());
+        //     }
+        // }
 
-        match msg.msg {
-            Msg::CreateGraph(properties) => Reply::from_id(self.create_graph(properties)),
-            Msg::ListGraphs => Reply::from_vertex_info_list(self.list_graphs()),
-            Msg::Query(Query::ReadGraph(read_graph)) => {
-                Reply::from_graph(self.read_graph(read_graph))
+        match msg {
+            Msg::MutateState => match .... {
+                MutateState::CreateGraph(properties) => {
+                    Reply::from_id(self.create_graph(properties))
+                }
             }
-            //
-            Msg::CreateVertex(create_vertex) => {
-                Reply::from_id(self.create_vertex((msg.graph_id, create_vertex)))
-            }
-            Msg::ReadVertex(msg) => Reply::from_vertex_info(self.read_vertex(&msg)),
-            Msg::UpdateVertex(msg) => Reply::from_empty(self.update_vertex(msg)),
-            Msg::DeleteVertex(msg) => Reply::from_empty(self.delete_vertex(msg)),
-            Msg::CreateEdge(msg) => Reply::from_empty(self.create_edge(msg)),
-            Msg::ReadEdge(msg) => Reply::from_edge_info(self.read_edge(msg)),
-            Msg::UpdateEdge(msg) => Reply::from_empty(self.update_edge(msg)),
-            Msg::DeleteEdge(msg) => Reply::from_empty(self.delete_edge(msg)),
+            // Msg::MutateState::CreateGraph(properties) => {
+            //     Reply::from_id(self.create_graph(properties))
+            // }
+            // Msg::ListGraphs => Reply::from_vertex_info_list(self.list_graphs()),
+            // Msg::Query(Query::ReadGraph(read_graph)) => {
+            //     Reply::from_graph(self.read_graph(read_graph))
+            // }
+
+            // //
+            // Msg::CreateVertex(create_vertex) => {
+            //     Reply::from_id(self.create_vertex((msg.graph_id, create_vertex)))
+            // }
+            // Msg::ReadVertex(msg) => Reply::from_vertex_info(self.read_vertex(&msg)),
+            // Msg::UpdateVertex(msg) => Reply::from_empty(self.update_vertex(msg)),
+            // Msg::DeleteVertex(msg) => Reply::from_empty(self.delete_vertex(msg)),
+            // Msg::CreateEdge(msg) => Reply::from_empty(self.create_edge(msg)),
+            // Msg::ReadEdge(msg) => Reply::from_edge_info(self.read_edge(msg)),
+            // Msg::UpdateEdge(msg) => Reply::from_empty(self.update_edge(msg)),
+            // Msg::DeleteEdge(msg) => Reply::from_empty(self.delete_edge(msg)),
             _ => todo!(),
         }
     }
@@ -107,10 +112,7 @@ impl Store {
             .collect::<Result<Vec<_>>>()
     }
 
-    fn read_graph(
-        &self,
-        (graph_id, expected_state_id): (GraphId, StateId),
-    ) -> Result<Option<Graph>> {
+    fn read_graph(&self, graph_id: GraphId) -> Result<Option<Graph>> {
         let graph_info = self.read_vertex(&graph_id)?;
         let vertices = graph_info
             .outbound_edges
@@ -126,11 +128,9 @@ impl Store {
             .as_str()
             .unwrap()
             .into();
-        let graph = if state_id == expected_state_id {
-            None
-        } else {
-            Some(Graph { vertices, state_id })
-        };
+
+        let graph = Some(Graph { vertices, state_id });
+
         Ok(graph)
     }
 
@@ -350,10 +350,7 @@ fn test() {
     };
 
     let print_state = || {
-        let reply = store.execute(make_msg(Msg::Query(Query::ReadGraph((
-            graph_id.clone(),
-            "".into(),
-        )))));
+        let reply = store.execute(make_msg(Msg::Query(Query::ReadGraph(graph_id.clone()))));
         dbg!(reply);
     };
 
