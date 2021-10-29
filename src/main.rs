@@ -56,7 +56,7 @@ fn main() {
 }
 
 // TODOs
-// undo: Vec<Msg>, redo: Vec<Msg> , stateid
+// undo: Vec<Msg>, redo: Vec<Msg>
 // delete graph
 // improve msg api so it is clear if we need to update state_id
 
@@ -65,6 +65,7 @@ fn main() {
 // unit tests
 // ui initialization
 // cloud sync
+
 //
 
 // Basic search

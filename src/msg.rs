@@ -4,18 +4,17 @@ use serde_json::Value as JsonValue;
 use std::convert::TryInto;
 use uuid::Uuid;
 
-// pub struct MsgWithGraphId {
-//     pub msg: Msg,
-//     pub graph_id: GraphId,
-// }
-
 pub enum Msg {
-    MutateState,
-    ReadOnly,
+    MutateState(MutateState),
+    ReadOnly(ReadOnly),
+    CreateGraph(JsonValue),
 }
 
-pub enum MutateState {
-    CreateGraph(JsonValue),
+pub struct MutateState {
+    pub kind: MutateStateKind,
+    pub graph_id: GraphId,
+}
+pub enum MutateStateKind {
     DeleteGraph(GraphId),
     CreateVertex(CreateVertex),
     UpdateVertex((VertexId, JsonValue)),
@@ -25,11 +24,13 @@ pub enum MutateState {
     DeleteEdge(EdgeId),
     ReverseEdge(EdgeId),
 }
+
+// no graph id needed
 pub enum ReadOnly {
     ListGraphs,
     ReadVertex(VertexId),
     ReadEdge(EdgeId),
-    Query(Query),
+    ReadGraph(GraphId),
 }
 
 pub trait StateModifiers {
@@ -43,16 +44,10 @@ impl StateModifiers for MutateState {
 #[derive(Debug)]
 pub struct Graph {
     pub vertices: Vec<VertexInfo>,
-    pub state_id: String,
+    pub state_id: u64,
 }
 
 pub type GraphId = String;
-
-pub enum Query {
-    ReadGraph(GraphId),
-}
-
-pub type StateId = String;
 
 pub type VertexId = String;
 
@@ -61,7 +56,7 @@ pub struct CreateVertex {
     pub properties: JsonValue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VertexInfo {
     pub outbound_edges: Vec<EdgeId>,
     pub inbound_edges: Vec<EdgeId>,
@@ -108,17 +103,46 @@ impl TryInto<EdgeKey> for EdgeId {
 }
 
 #[derive(Debug)]
+#[must_use = "this `Reply` may be an `Error` variant, which should be handled"]
 pub enum Reply {
     Id(String),
     VertexInfoList(Vec<VertexInfo>),
     Error(String),
     VertexInfo(VertexInfo),
     EdgeInfo(EdgeInfo),
-    Graph(Option<Graph>),
+    Graph(Graph),
     Empty,
 }
 
 impl Reply {
+    pub fn into_edge_info(self) -> Option<EdgeInfo> {
+        match self {
+            Reply::EdgeInfo(edge_info) => Some(edge_info),
+            _ => None,
+        }
+    }
+
+    pub fn into_vertex_info(self) -> Option<VertexInfo> {
+        match self {
+            Reply::VertexInfo(vertex_info) => Some(vertex_info),
+            _ => None,
+        }
+    }
+
+    pub fn into_graph(self) -> Option<Graph> {
+        match self {
+            Reply::Graph(graph) => Some(graph),
+            _ => None,
+        }
+    }
+
+    pub fn as_error(&self) -> std::result::Result<(), &str> {
+        match self {
+            Reply::Error(e) => Err(e.as_str()),
+            _ => Ok(()),
+        }
+    }
+
     pub fn as_id(&self) -> Option<&str> {
         match self {
             Reply::Id(id) => Some(id.as_str()),
@@ -126,7 +150,7 @@ impl Reply {
         }
     }
 
-    pub fn from_graph(graph: Result<Option<Graph>>) -> Reply {
+    pub fn from_graph(graph: Result<Graph>) -> Reply {
         match graph {
             Ok(graph) => Reply::Graph(graph),
             Err(e) => Reply::Error(e.to_string()),
