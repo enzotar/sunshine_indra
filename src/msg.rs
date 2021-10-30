@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 pub enum Msg {
     MutateState(MutateState),
-    ReadOnly(ReadOnly),
+    Query(Query),
     CreateGraph(JsonValue),
 }
 
@@ -16,9 +16,9 @@ pub struct MutateState {
 }
 pub enum MutateStateKind {
     DeleteGraph(GraphId),
-    CreateVertex(CreateVertex),
-    UpdateVertex((VertexId, JsonValue)),
-    DeleteVertex(VertexId),
+    CreateNode(Node),
+    UpdateNode((NodeId, JsonValue)),
+    DeleteNode(NodeId),
     CreateEdge(CreateEdge),
     UpdateEdge((EdgeId, JsonValue)),
     DeleteEdge(EdgeId),
@@ -26,48 +26,50 @@ pub enum MutateStateKind {
 }
 
 // no graph id needed
-pub enum ReadOnly {
+pub enum Query {
     ListGraphs,
-    ReadVertex(VertexId),
+    ReadNode(NodeId),
     ReadEdge(EdgeId),
     ReadGraph(GraphId),
 }
 
-pub trait StateModifiers {
-    fn update_state() {}
-}
-
-impl StateModifiers for MutateState {
-    fn update_state() {}
-}
-
 #[derive(Debug)]
 pub struct Graph {
-    pub vertices: Vec<VertexInfo>,
+    pub vertices: Vec<Node>,
     pub state_id: u64,
 }
 
 pub type GraphId = String;
 
-pub type VertexId = String;
+pub type NodeId = String;
 
-pub struct CreateVertex {
-    pub vertex_type: String,
+// pub struct CreateNode {
+//     pub node_type: String,
+//     pub properties: JsonValue,
+// }
+
+#[derive(Debug, Clone, Default)]
+pub struct Node {
+    pub node_id: Uuid,
     pub properties: JsonValue,
+    pub outbound_edges: Option<Vec<EdgeId>>,
+    pub inbound_edges: Option<Vec<EdgeId>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct VertexInfo {
-    pub outbound_edges: Vec<EdgeId>,
-    pub inbound_edges: Vec<EdgeId>,
-    pub properties: JsonValue,
+impl Node {
+    pub fn from_properties(properties: JsonValue) -> Self {
+        Self {
+            properties,
+            ..Default::default()
+        }
+    }
 }
 
 pub struct CreateEdge {
     pub directed: bool,
-    pub from: VertexId,
+    pub from: NodeId,
     pub edge_type: String,
-    pub to: VertexId,
+    pub to: NodeId,
     pub properties: JsonValue,
 }
 
@@ -75,8 +77,8 @@ pub type EdgeInfo = JsonValue;
 
 #[derive(Debug, Clone)]
 pub struct EdgeId {
-    pub from: VertexId,
-    pub to: VertexId,
+    pub from: NodeId,
+    pub to: NodeId,
     pub edge_type: String,
 }
 
@@ -106,9 +108,9 @@ impl TryInto<EdgeKey> for EdgeId {
 #[must_use = "this `Reply` may be an `Error` variant, which should be handled"]
 pub enum Reply {
     Id(String),
-    VertexInfoList(Vec<VertexInfo>),
+    NodeList(Vec<Node>),
     Error(String),
-    VertexInfo(VertexInfo),
+    Node(Node),
     EdgeInfo(EdgeInfo),
     Graph(Graph),
     Empty,
@@ -122,9 +124,9 @@ impl Reply {
         }
     }
 
-    pub fn into_vertex_info(self) -> Option<VertexInfo> {
+    pub fn into_node_info(self) -> Option<Node> {
         match self {
-            Reply::VertexInfo(vertex_info) => Some(vertex_info),
+            Reply::Node(node_info) => Some(node_info),
             _ => None,
         }
     }
@@ -164,6 +166,13 @@ impl Reply {
         }
     }
 
+    pub fn from_node(node: Result<&Node>) -> Reply {
+        match node {
+            Ok(node) => Reply::Node(*node),
+            Err(e) => Reply::Error(e.to_string()),
+        }
+    }
+
     pub fn from_empty(val: Result<()>) -> Reply {
         match val {
             Ok(_) => Reply::Empty,
@@ -171,16 +180,16 @@ impl Reply {
         }
     }
 
-    pub fn from_vertex_info(info: Result<VertexInfo>) -> Reply {
+    pub fn from_vertex_info(info: Result<Node>) -> Reply {
         match info {
-            Ok(info) => Reply::VertexInfo(info),
+            Ok(info) => Reply::Node(info),
             Err(e) => Reply::Error(e.to_string()),
         }
     }
 
-    pub fn from_vertex_info_list(info: Result<Vec<VertexInfo>>) -> Reply {
+    pub fn from_vertex_info_list(info: Result<Vec<Node>>) -> Reply {
         match info {
-            Ok(info) => Reply::VertexInfoList(info),
+            Ok(info) => Reply::NodeList(info),
             Err(e) => Reply::Error(e.to_string()),
         }
     }

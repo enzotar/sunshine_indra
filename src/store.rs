@@ -1,20 +1,22 @@
 use indradb::{
     Datastore, EdgeKey, EdgePropertyQuery, MemoryDatastore, MemoryTransaction, RangeVertexQuery,
-    SpecificEdgeQuery, SpecificVertexQuery, Transaction, Type, VertexPropertyQuery, VertexQuery,
-    VertexQueryExt,
+    SpecificEdgeQuery, SpecificVertexQuery, Transaction, Type, Vertex, VertexPropertyQuery,
+    VertexQuery, VertexQueryExt,
 };
 use serde_json::Value as JsonValue;
 use std::convert::TryInto;
 use uuid::Uuid;
 
 use crate::msg::{
-    CreateEdge, CreateVertex, EdgeId, EdgeInfo, Graph, GraphId, Msg, MutateState, MutateStateKind,
-    ReadOnly, Reply, VertexId, VertexInfo,
+    CreateEdge, EdgeId, EdgeInfo, Graph, GraphId, Msg, MutateState, MutateStateKind, Node, NodeId,
+    Query, Reply,
 };
 
 use crate::error::{Error, Result};
 
-const PROP_NAME: &str = "data";
+const VERTEX_PROPERTY_HOLDER: &str = "data";
+const VERTEX_TYPE: &str = "node";
+
 const GRAPH_ROOT_TYPE: &str = "_root_type";
 const GRAPH_ROOT_EDGE_TYPE: &str = "_root_edge_type";
 const STATE_ID_PROPERTY: &str = "_state_id_prop";
@@ -22,7 +24,7 @@ const STATE_ID_PROPERTY: &str = "_state_id_prop";
 #[derive(Debug)]
 pub struct Store {
     datastore: MemoryDatastore,
-    root_vertex_type: Type,
+    root_node_type: Type,
     root_edge_type: Type,
 }
 
@@ -31,7 +33,7 @@ impl Store {
         let datastore = create_db(&cfg.db_path).map_err(Error::DatastoreCreate)?;
         let store = Store {
             datastore: datastore,
-            root_vertex_type: Type::new(GRAPH_ROOT_TYPE).unwrap(),
+            root_node_type: Type::new(GRAPH_ROOT_TYPE).unwrap(),
             root_edge_type: Type::new(GRAPH_ROOT_EDGE_TYPE).unwrap(),
         };
         Ok(store)
@@ -40,9 +42,9 @@ impl Store {
 
     pub fn execute(&self, msg: Msg) -> Reply {
         match msg {
+            Msg::CreateGraph(properties) => Reply::from_node(self.create_graph(properties)),
             Msg::MutateState(mutate_state) => self.execute_mutate_state(mutate_state),
-            Msg::ReadOnly(read_only) => self.execute_read_only(read_only),
-            Msg::CreateGraph(properties) => Reply::from_id(self.create_graph(properties)),
+            Msg::Query(read_only) => self.execute_read_only(read_only),
         }
     }
 
@@ -50,13 +52,13 @@ impl Store {
         let MutateState { kind, graph_id } = msg;
 
         let reply = match kind {
-            MutateStateKind::CreateVertex(create_vertex) => {
-                Reply::from_id(self.create_vertex((Some(&graph_id), create_vertex)))
+            MutateStateKind::CreateNode(node_args) => {
+                Reply::from_node(self.create_node((Some(&graph_id), node_args)))
             }
-            MutateStateKind::UpdateVertex((vertex_id, properties)) => {
+            MutateStateKind::UpdateNode((vertex_id, properties)) => {
                 Reply::from_empty(self.update_vertex((&vertex_id, properties)))
             }
-            MutateStateKind::DeleteVertex(msg) => Reply::from_empty(self.delete_vertex(msg)),
+            MutateStateKind::DeleteNode(msg) => Reply::from_empty(self.delete_vertex(msg)),
             MutateStateKind::CreateEdge(msg) => Reply::from_empty(self.create_edge(msg)),
             MutateStateKind::UpdateEdge(msg) => Reply::from_empty(self.update_edge(msg)),
             MutateStateKind::DeleteEdge(msg) => Reply::from_empty(self.delete_edge(msg)),
@@ -75,20 +77,20 @@ impl Store {
         reply
     }
 
-    fn execute_read_only(&self, msg: ReadOnly) -> Reply {
+    fn execute_read_only(&self, msg: Query) -> Reply {
         match msg {
-            ReadOnly::ReadEdge(msg) => Reply::from_edge_info(self.read_edge(msg)),
-            ReadOnly::ReadVertex(msg) => Reply::from_vertex_info(self.read_vertex(&msg)),
-            ReadOnly::ReadGraph(read_graph) => Reply::from_graph(self.read_graph(read_graph)),
-            ReadOnly::ListGraphs => Reply::from_vertex_info_list(self.list_graphs()),
+            Query::ReadEdge(msg) => Reply::from_edge_info(self.read_edge(msg)),
+            Query::ReadNode(msg) => Reply::from_vertex_info(self.read_vertex(&msg)),
+            // Query::ReadGraph(read_graph) => Reply::from_graph(self.read_graph(read_graph)),
+            Query::ListGraphs => Reply::from_vertex_info_list(self.list_graphs()),
         }
     }
 
     fn update_state_id(&self, graph_id: &str) -> Result<()> {
         let mut graph_root = self.read_vertex(graph_id)?;
         let mut properties = graph_root.properties.as_object_mut().unwrap();
-        let old_id = properties.get(STATE_ID_PROPERTY).unwrap().as_u64().unwrap();
-        let new_id = JsonValue::Number(serde_json::Number::from(old_id + 1));
+        let current_id = properties.get(STATE_ID_PROPERTY).unwrap().as_u64().unwrap();
+        let new_id = JsonValue::Number(serde_json::Number::from(current_id + 1));
 
         properties.insert(STATE_ID_PROPERTY.into(), new_id);
 
@@ -97,28 +99,23 @@ impl Store {
         Ok(())
     }
 
-    fn create_graph(&self, properties: JsonValue) -> Result<VertexId> {
+    fn create_graph(&self, properties: JsonValue) -> Result<&Node> {
         let mut properties = properties;
         let state_id = JsonValue::Number(serde_json::Number::from(0u64));
         properties
             .as_object_mut()
             .unwrap()
             .insert(STATE_ID_PROPERTY.into(), state_id);
-        self.create_vertex((
-            None,
-            CreateVertex {
-                vertex_type: GRAPH_ROOT_TYPE.into(),
-                properties,
-            },
-        ))
+
+        self.create_node((None, Node::from_properties(properties)))
     }
 
-    fn list_graphs(&self) -> Result<Vec<VertexInfo>> {
+    fn list_graphs(&self) -> Result<Vec<Node>> {
         let trans = self.transaction()?;
         trans
             .get_vertices(RangeVertexQuery {
                 limit: 0,
-                t: Some(self.root_vertex_type.clone()),
+                t: Some(self.root_node_type.clone()),
                 start_id: None,
             })
             .map_err(Error::GetVertices)?
@@ -127,86 +124,106 @@ impl Store {
             .collect::<Result<Vec<_>>>()
     }
 
-    fn read_graph(&self, graph_id: GraphId) -> Result<Graph> {
-        let graph_info = self.read_vertex(&graph_id)?;
-        let vertices = graph_info
-            .outbound_edges
-            .iter()
-            .map(|edge_id| self.read_vertex(&edge_id.to))
-            .collect::<Result<Vec<_>>>()?;
-        let state_id = graph_info
-            .properties
-            .as_object()
-            .unwrap()
-            .get(STATE_ID_PROPERTY)
-            .unwrap()
-            .as_u64()
-            .unwrap()
-            .into();
+    // fn read_graph(&self, graph_id: GraphId) -> Result<Graph> {
+    //     let graph_info = self.read_vertex(&graph_id)?;
+    //     let vertices = graph_info
+    //         .outbound_edges
+    //         .iter()
+    //         .map(|edge_id| self.read_vertex(&edge_id.to))
+    //         .collect::<Result<Vec<_>>>()?;
+    //     let state_id = graph_info
+    //         .properties
+    //         .as_object()
+    //         .unwrap()
+    //         .get(STATE_ID_PROPERTY)
+    //         .unwrap()
+    //         .as_u64()
+    //         .unwrap()
+    //         .into();
 
-        Ok(Graph { vertices, state_id })
-    }
+    //     Ok(Graph { vertices, state_id })
+    // }
 
     // does user have latest state?
 
-    fn create_vertex(
-        &self,
-        (graph_id, create_vertex): (Option<&GraphId>, CreateVertex),
-    ) -> Result<VertexId> {
+    fn create_node(&self, (graph_id, node_args): (Option<&GraphId>, Node)) -> Result<&Node> {
         let trans = self.transaction()?;
-        let vertex_type = Type::new(create_vertex.vertex_type).map_err(Error::CreateType)?;
-        let uuid = trans
-            .create_vertex_from_type(vertex_type)
-            .map_err(Error::CreateVertex)?;
-        let query = SpecificVertexQuery { ids: vec![uuid] }.into();
-        let query = VertexPropertyQuery {
-            inner: query,
-            name: PROP_NAME.into(),
+
+        let vertex_type = Type::new(VERTEX_TYPE).map_err(Error::CreateType)?;
+
+        let vertex: Vertex = Vertex::new(vertex_type);
+
+        // let uuid = trans
+        //     .create_vertex_from_type(node_type)
+        //     .map_err(Error::CreateVertex)?;
+
+        let vertex_query = SpecificVertexQuery::single(vertex.id).into();
+
+        let vertex_property_query = VertexPropertyQuery {
+            inner: vertex_query,
+            name: VERTEX_PROPERTY_HOLDER.into(),
         };
         trans
-            .set_vertex_properties(query, &create_vertex.properties)
+            .set_vertex_properties(vertex_property_query, &node_args.properties)
             .map_err(Error::SetVertexProperties)?;
 
         if let Some(graph_id) = graph_id {
             let edge_key = EdgeKey {
                 outbound_id: Uuid::parse_str(graph_id.as_str())?,
-                inbound_id: uuid,
+                inbound_id: vertex.id,
                 t: self.root_edge_type.clone(),
             };
             if !trans.create_edge(&edge_key).map_err(Error::CreateEdge)? {
                 return Err(Error::CreateEdgeFailed);
             }
         }
-
-        Ok(uuid.to_string())
+        Ok(&Node {
+            node_id: vertex.id,
+            properties: node_args.properties,
+            outbound_edges: None,
+            inbound_edges: None,
+        })
     }
 
-    fn read_vertex(&self, vertex_id: &str) -> Result<VertexInfo> {
+    fn read_vertex(&self, node_id: &str) -> Result<Node> {
         let trans = self.transaction()?;
-        let uuid = Uuid::parse_str(vertex_id)?;
-        let query = SpecificVertexQuery { ids: vec![uuid] };
+        let uuid = Uuid::parse_str(node_id)?;
+
+        let query = SpecificVertexQuery::single(uuid);
+
+        let vertex_query: VertexQuery = query.into();
+
         let outbound_query = query.clone().outbound();
+
         let inbound_query = query.clone().inbound();
+
         let mut properties = trans
             .get_all_vertex_properties(VertexQuery::Specific(query))
             .map_err(Error::GetVertices)?;
         assert_eq!(properties.len(), 1);
+
         let properties = properties.pop().unwrap().props.pop().unwrap().value;
-        //dbg! {&properties};
-        let outbound_edges = trans
-            .get_edges(outbound_query)
-            .map_err(Error::GetEdgesOfVertex)?
-            .into_iter()
-            .map(|edge| EdgeId::from(edge.key))
-            .collect();
-        //dbg! {&outbound_edges}; //////////////////////////////////////////////////////////////
-        let inbound_edges = trans
-            .get_edges(inbound_query)
-            .map_err(Error::GetEdgesOfVertex)?
-            .into_iter()
-            .map(|edge| EdgeId::from(edge.key))
-            .collect();
-        Ok(VertexInfo {
+
+        let outbound_edges = Some(
+            trans
+                .get_edges(outbound_query)
+                .map_err(Error::GetEdgesOfVertex)?
+                .into_iter()
+                .map(|edge| EdgeId::from(edge.key))
+                .collect(),
+        );
+
+        let inbound_edges = Some(
+            trans
+                .get_edges(inbound_query)
+                .map_err(Error::GetEdgesOfVertex)?
+                .into_iter()
+                .map(|edge| EdgeId::from(edge.key))
+                .collect(),
+        );
+
+        Ok(Node {
+            node_id: uuid,
             outbound_edges,
             inbound_edges,
             properties,
@@ -221,7 +238,7 @@ impl Store {
             .set_vertex_properties(
                 VertexPropertyQuery {
                     inner: query.into(),
-                    name: PROP_NAME.into(),
+                    name: VERTEX_PROPERTY_HOLDER.into(),
                 },
                 &value,
             )
@@ -229,7 +246,7 @@ impl Store {
     }
 
     // deletes inbound and outbound edges as well
-    fn delete_vertex(&self, vertex_id: VertexId) -> Result<()> {
+    fn delete_vertex(&self, vertex_id: NodeId) -> Result<()> {
         let trans = self.transaction()?;
         let uuid = Uuid::parse_str(vertex_id.as_str())?;
         let query = SpecificVertexQuery { ids: vec![uuid] };
@@ -262,7 +279,7 @@ impl Store {
         };
         let query = EdgePropertyQuery {
             inner: query.into(),
-            name: PROP_NAME.into(),
+            name: VERTEX_PROPERTY_HOLDER.into(),
         };
         trans
             .set_edge_properties(query, &msg.properties)
@@ -280,7 +297,7 @@ impl Store {
         };
         let query = EdgePropertyQuery {
             inner: query.into(),
-            name: PROP_NAME.into(),
+            name: VERTEX_PROPERTY_HOLDER.into(),
         };
         let mut properties = trans
             .get_edge_properties(query)
@@ -298,7 +315,7 @@ impl Store {
         };
         let query = EdgePropertyQuery {
             inner: query.into(),
-            name: PROP_NAME.into(),
+            name: VERTEX_PROPERTY_HOLDER.into(),
         };
         trans
             .set_edge_properties(query, &value)
@@ -368,15 +385,14 @@ mod tests {
         };
 
         let print_state = || {
-            let reply = store.execute(Msg::ReadOnly(ReadOnly::ReadGraph(graph_id.clone())));
+            let reply = store.execute(Msg::Query(Query::ReadGraph(graph_id.clone())));
             dbg!(reply);
         };
 
         let create_vertex = |properties: serde_json::Value| {
-            let reply = store.execute(make_msg_mut(MutateStateKind::CreateVertex(CreateVertex {
-                vertex_type: GRAPH_ROOT_TYPE.into(),
-                properties,
-            })));
+            let reply = store.execute(make_msg_mut(MutateStateKind::CreateNode(
+                Node::from_properties(properties),
+            )));
             match reply {
                 Reply::Id(id) => id,
                 e => panic!("failed to create vertex: {:?}", e),
@@ -394,7 +410,7 @@ mod tests {
         print_state();
 
         store
-            .execute(make_msg_mut(MutateStateKind::UpdateVertex((
+            .execute(make_msg_mut(MutateStateKind::UpdateNode((
                 id1.clone(),
                 serde_json::json!({
                     "name": "updated_first_vertex",

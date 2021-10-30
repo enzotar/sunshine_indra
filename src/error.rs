@@ -7,6 +7,7 @@ pub enum Error {
     DatastoreCreate(bincode::Error),
     #[error("error while creating transaction: {0}.")]
     CreateTransaction(indradb::Error),
+
     #[error("error while creating vertex: {0}.")]
     CreateVertex(indradb::Error),
     #[error("error while setting vertex properties: {0}.")]
@@ -15,20 +16,22 @@ pub enum Error {
     GetVertices(indradb::Error),
     #[error("error while getting edges of a vertex: {0}.")]
     GetEdgesOfVertex(indradb::Error),
+    #[error("error while updating vertex: {0}.")]
+    UpdateVertex(indradb::Error),
+    #[error("error while deleting vertex: {0}.")]
+    DeleteVertex(indradb::Error),
+
     #[error("Custom type name is invalid.")]
     CreateType(indradb::ValidationError),
     #[error("error while parsing uuid: {0}.")]
     InvalidId(uuid::Error),
+
     #[error("error while creating edge: {0}.")]
     CreateEdge(indradb::Error),
     #[error("error while setting edge properties: {0}.")]
     SetEdgeProperties(indradb::Error),
     #[error("failed to create the edge.")]
     CreateEdgeFailed,
-    #[error("error while updating vertex: {0}.")]
-    UpdateVertex(indradb::Error),
-    #[error("error while deleting vertex: {0}.")]
-    DeleteVertex(indradb::Error),
     #[error("error, could not delete outbound edges: {0}.")]
     DeleteOutboundEdges(indradb::Error),
     #[error("error, could not read edge properties: {0}.")]
