@@ -1,7 +1,6 @@
 use indradb::{
-    Datastore, EdgeKey, EdgePropertyQuery, MemoryDatastore, MemoryTransaction, RangeVertexQuery,
-    SpecificEdgeQuery, SpecificVertexQuery, Transaction, Type, VertexPropertyQuery, VertexQuery,
-    VertexQueryExt,
+    Datastore, EdgeKey, EdgePropertyQuery, RangeVertexQuery, SledDatastore, SpecificEdgeQuery,
+    SpecificVertexQuery, Transaction, Type, VertexPropertyQuery, VertexQuery, VertexQueryExt,
 };
 use serde_json::Value as JsonValue;
 use std::convert::TryInto;
@@ -19,18 +18,17 @@ const GRAPH_ROOT_TYPE: &str = "_root_type";
 const GRAPH_ROOT_EDGE_TYPE: &str = "_root_edge_type";
 const STATE_ID_PROPERTY: &str = "_state_id_prop";
 
-#[derive(Debug)]
 pub struct Store {
-    datastore: MemoryDatastore,
+    datastore: SledDatastore,
     root_vertex_type: Type,
     root_edge_type: Type,
 }
 
 impl Store {
     pub fn new(cfg: &Config) -> Result<Store> {
-        let datastore = create_db(&cfg.db_path).map_err(Error::DatastoreCreate)?;
+        let datastore = SledDatastore::new(&cfg.db_path).map_err(Error::DatastoreCreate)?;
         let store = Store {
-            datastore: datastore,
+            datastore,
             root_vertex_type: Type::new(GRAPH_ROOT_TYPE).unwrap(),
             root_edge_type: Type::new(GRAPH_ROOT_EDGE_TYPE).unwrap(),
         };
@@ -86,7 +84,7 @@ impl Store {
 
     fn update_state_id(&self, graph_id: &str) -> Result<()> {
         let mut graph_root = self.read_vertex(graph_id)?;
-        let mut properties = graph_root.properties.as_object_mut().unwrap();
+        let properties = graph_root.properties.as_object_mut().unwrap();
         let old_id = properties.get(STATE_ID_PROPERTY).unwrap().as_u64().unwrap();
         let new_id = JsonValue::Number(serde_json::Number::from(old_id + 1));
 
@@ -141,8 +139,7 @@ impl Store {
             .get(STATE_ID_PROPERTY)
             .unwrap()
             .as_u64()
-            .unwrap()
-            .into();
+            .unwrap();
 
         Ok(Graph { vertices, state_id })
     }
@@ -267,7 +264,6 @@ impl Store {
         trans
             .set_edge_properties(query, &msg.properties)
             .map_err(Error::SetEdgeProperties)?;
-        dbg! {&trans};
 
         Ok(())
     }
@@ -317,26 +313,15 @@ impl Store {
         Ok(())
     }
 
-    fn transaction(&self) -> Result<MemoryTransaction> {
+    fn transaction(&self) -> Result<impl Transaction> {
         self.datastore
             .transaction()
             .map_err(Error::CreateTransaction)
-    }
-
-    fn clear_database(&self) -> Result<()> {
-        todo!()
     }
 }
 
 pub struct Config {
     pub db_path: String,
-}
-
-fn create_db(path: &str) -> std::result::Result<MemoryDatastore, bincode::Error> {
-    if let Ok(db) = MemoryDatastore::read(path) {
-        return Ok(db);
-    }
-    MemoryDatastore::create(path)
 }
 
 #[cfg(test)]

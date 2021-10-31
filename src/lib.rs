@@ -2,31 +2,31 @@ pub mod error;
 pub mod msg;
 pub mod store;
 
-use msg::{EdgeInfo, GraphId, Msg, MutateState, MutateStateKind, ReadOnly, VertexInfo};
+use msg::{EdgeInfo, GraphId, Msg, ReadOnly, VertexInfo};
 use store::Store;
 
 pub struct UiStore {
-    inner: Store,
-    current_graph_id: GraphId,
-    view: View,
+    pub inner: Store,
+    pub current_graph_id: GraphId,
+    pub view: View,
 }
 
 pub struct View {
-    root: VertexInfo,
-    edges: Vec<EdgeInfo>,
-    vertices: Vec<VertexInfo>,
+    pub root: VertexInfo,
+    pub edges: Vec<EdgeInfo>,
+    pub vertices: Vec<VertexInfo>,
 }
 
 impl UiStore {
-    pub fn new() -> UiStore {
+    pub fn new(_cfg: &Config) -> UiStore {
         todo!()
     }
 
-    fn send_msg(&self, msg: Msg) {
+    pub fn send_msg(&self, _msg: Msg) {
         todo!()
     }
 
-    fn update_view(&mut self) {
+    pub fn update_view(&mut self) {
         let graph = self
             .inner
             .execute(Msg::ReadOnly(ReadOnly::ReadGraph(
@@ -55,8 +55,10 @@ impl UiStore {
             .collect();
         self.view = View {
             vertices: graph.vertices,
-            root: root.clone(),
+            root,
             edges,
         };
     }
 }
+
+pub struct Config {}
