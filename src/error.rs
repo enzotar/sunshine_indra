@@ -4,7 +4,7 @@ use thiserror::Error as ThisError;
 #[derive(Debug, ThisError)]
 pub enum Error {
     #[error("error while creating datastore: {0}.")]
-    DatastoreCreate(bincode::Error),
+    DatastoreCreate(indradb::Error),
     #[error("error while creating transaction: {0}.")]
     CreateTransaction(indradb::Error),
 

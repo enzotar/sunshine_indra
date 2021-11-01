@@ -1,7 +1,6 @@
 use indradb::{
-    Datastore, EdgeKey, EdgePropertyQuery, MemoryDatastore, MemoryTransaction, RangeVertexQuery,
-    SpecificEdgeQuery, SpecificVertexQuery, Transaction, Type, Vertex, VertexPropertyQuery,
-    VertexQuery, VertexQueryExt,
+    Datastore, EdgeKey, EdgePropertyQuery, RangeVertexQuery, SledDatastore, SpecificEdgeQuery,
+    SpecificVertexQuery, Transaction, Type, VertexPropertyQuery, VertexQuery, VertexQueryExt,
 };
 use serde_json::Value as JsonValue;
 use std::convert::TryInto;
@@ -22,19 +21,18 @@ const GRAPH_ROOT_TYPE: &str = "_root_type";
 const GRAPH_ROOT_EDGE_TYPE: &str = "_root_edge_type";
 const STATE_ID_PROPERTY: &str = "_state_id_prop";
 
-#[derive(Debug)]
 pub struct Store {
-    datastore: MemoryDatastore,
-    root_node_type: Type,
+    datastore: SledDatastore,
+    root_vertex_type: Type,
     root_edge_type: Type,
 }
 
 impl Store {
     pub fn new(cfg: &Config) -> Result<Store> {
-        let datastore = create_db(&cfg.db_path).map_err(Error::DatastoreCreate)?;
+        let datastore = SledDatastore::new(&cfg.db_path).map_err(Error::DatastoreCreate)?;
         let store = Store {
-            datastore: datastore,
-            root_node_type: Type::new(GRAPH_ROOT_TYPE).unwrap(),
+            datastore,
+            root_vertex_type: Type::new(GRAPH_ROOT_TYPE).unwrap(),
             root_edge_type: Type::new(GRAPH_ROOT_EDGE_TYPE).unwrap(),
         };
         Ok(store)
@@ -141,8 +139,7 @@ impl Store {
             .get(STATE_ID_PROPERTY)
             .unwrap()
             .as_u64()
-            .unwrap()
-            .into();
+            .unwrap();
 
         Ok(Graph { vertices, state_id })
     }
@@ -348,26 +345,15 @@ impl Store {
         Ok(())
     }
 
-    fn transaction(&self) -> Result<MemoryTransaction> {
+    fn transaction(&self) -> Result<impl Transaction> {
         self.datastore
             .transaction()
             .map_err(Error::CreateTransaction)
-    }
-
-    fn clear_database(&self) -> Result<()> {
-        todo!()
     }
 }
 
 pub struct Config {
     pub db_path: String,
-}
-
-fn create_db(path: &str) -> std::result::Result<MemoryDatastore, bincode::Error> {
-    if let Ok(db) = MemoryDatastore::read(path) {
-        return Ok(db);
-    }
-    MemoryDatastore::create(path)
 }
 
 #[cfg(test)]
