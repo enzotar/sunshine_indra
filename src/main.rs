@@ -58,7 +58,6 @@ fn main() {
 // TODOs
 // undo: Vec<Msg>, redo: Vec<Msg>
 // delete graph
-// improve msg api so it is clear if we need to update state_id
 
 // clear database/ init
 // read config from command line
