@@ -1,6 +1,6 @@
-// pub mod error;
-// pub mod msg;
-// pub mod store;
+pub mod error;
+pub mod msg;
+pub mod store;
 
 // use msg::{EdgeInfo, GraphId, Msg, MutateState, MutateStateKind, Node, Query};
 // use store::Store;

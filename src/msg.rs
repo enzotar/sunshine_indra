@@ -1,4 +1,7 @@
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    store::Store,
+};
 use indradb::{EdgeKey, Type};
 use serde_json::Value as JsonValue;
 use std::convert::TryInto;
@@ -18,30 +21,31 @@ pub enum MutateStateKind {
     DeleteGraph(GraphId),
     CreateNode(Node),
     UpdateNode((NodeId, JsonValue)),
-    DeleteNode(NodeId),
-    CreateEdge(CreateEdge),
-    UpdateEdge((EdgeId, JsonValue)),
-    DeleteEdge(EdgeId),
-    ReverseEdge(EdgeId),
+    DeleteNode(Node),
+    CreateEdge(Edge),
+    UpdateEdge((Edge, JsonValue)),
+    DeleteEdge(Edge),
+    ReverseEdge(Edge),
 }
 
 // no graph id needed
 pub enum Query {
     ListGraphs,
     ReadNode(NodeId),
-    ReadEdge(EdgeId),
+    ReadEdge(Edge),
     ReadGraph(GraphId),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Graph {
     pub vertices: Vec<Node>,
     pub state_id: u64,
 }
 
-pub type GraphId = String;
+pub type GraphId = Uuid;
 
-pub type NodeId = String;
+pub type NodeId = Uuid;
+pub type EdgeId = Uuid;
 
 // pub struct CreateNode {
 //     pub node_type: String,
@@ -50,10 +54,10 @@ pub type NodeId = String;
 
 #[derive(Debug, Clone, Default)]
 pub struct Node {
-    pub node_id: Uuid,
+    pub node_id: NodeId,
     pub properties: JsonValue,
-    pub outbound_edges: Option<Vec<EdgeId>>,
-    pub inbound_edges: Option<Vec<EdgeId>>,
+    pub outbound_edges: Option<Vec<Edge>>,
+    pub inbound_edges: Option<Vec<Edge>>,
 }
 
 impl Node {
@@ -65,68 +69,130 @@ impl Node {
     }
 }
 
-pub struct CreateEdge {
-    pub directed: bool,
-    pub from: NodeId,
+#[derive(Debug, Clone, Default)]
+pub struct Edge {
     pub edge_type: String,
+    pub id: EdgeId,
+    pub from: NodeId,
     pub to: NodeId,
     pub properties: JsonValue,
 }
 
-pub type EdgeInfo = JsonValue;
+impl Edge {}
 
-#[derive(Debug, Clone)]
-pub struct EdgeId {
-    pub from: NodeId,
-    pub to: NodeId,
-    pub edge_type: String,
+// pub type Edge = JsonValue;
+
+// #[derive(Debug, Clone)]
+// pub struct EdgeId {
+//     pub from: NodeId,
+//     pub to: NodeId,
+//     pub edge_type: String,
+// }
+
+impl From<NodeId> for Node {
+    fn from(_: NodeId) -> Self {
+        todo!()
+    }
+    // fn from(node_id: NodeId) -> Self {
+    //     let trans = Store::transaction()?;
+    //     // let uuid = node_id;
+
+    //     let query = SpecificVertexQuery::single(node_id);
+
+    //     // let vertex_query: VertexQuery = query.clone().into();
+
+    //     let outbound_query = query.clone().outbound();
+
+    //     let inbound_query = query.clone().inbound();
+
+    //     let mut properties = trans
+    //         .get_all_vertex_properties(VertexQuery::Specific(query))
+    //         .map_err(Error::GetVertices)?;
+    //     assert_eq!(properties.len(), 1);
+
+    //     let properties = properties.pop().unwrap().props.pop().unwrap().value;
+
+    //     let outbound_edges = Some(
+    //         trans
+    //             .get_edges(outbound_query)
+    //             .map_err(Error::GetEdgesOfVertex)?
+    //             .into_iter()
+    //             .map(|edge| Edge::from(edge.key))
+    //             .collect(),
+    //     );
+
+    //     let inbound_edges = Some(
+    //         trans
+    //             .get_edges(inbound_query)
+    //             .map_err(Error::GetEdgesOfVertex)?
+    //             .into_iter()
+    //             .map(|edge| Edge::from(edge.key))
+    //             .collect(),
+    //     );
+    //     let node = Node {
+    //         node_id,
+    //         outbound_edges,
+    //         inbound_edges,
+    //         properties,
+    //     };
+    //     dbg!(node.clone());
+
+    //     Ok(node)
+    //     Self {
+    //         node_id: todo!(),
+    //         properties: todo!(),
+    //         outbound_edges: todo!(),
+    //         inbound_edges: todo!(),
+    //     }
+    // }
 }
 
-impl From<EdgeKey> for EdgeId {
-    fn from(edge_key: EdgeKey) -> EdgeId {
-        EdgeId {
-            from: edge_key.outbound_id.to_string(),
-            to: edge_key.inbound_id.to_string(),
+impl From<EdgeKey> for Edge {
+    fn from(edge_key: EdgeKey) -> Self {
+        Self {
+            from: edge_key.outbound_id,
+            to: edge_key.inbound_id,
             edge_type: edge_key.t.0,
+            ..Default::default()
         }
     }
 }
 
-impl TryInto<EdgeKey> for EdgeId {
+impl TryInto<EdgeKey> for Edge {
     type Error = Error;
 
     fn try_into(self) -> Result<EdgeKey> {
         Ok(EdgeKey {
-            outbound_id: Uuid::parse_str(&self.from)?,
-            inbound_id: Uuid::parse_str(&self.to)?,
+            outbound_id: self.from,
+            inbound_id: self.to,
             t: Type(self.edge_type),
         })
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[must_use = "this `Reply` may be an `Error` variant, which should be handled"]
 pub enum Reply {
     Id(String),
     NodeList(Vec<Node>),
     Error(String),
     Node(Node),
-    EdgeInfo(EdgeInfo),
+    Edge(Edge),
     Graph(Graph),
     Empty,
 }
 
 impl Reply {
-    pub fn into_edge_info(self) -> Option<EdgeInfo> {
+    pub fn into_edge(self) -> Option<Edge> {
         match self {
-            Reply::EdgeInfo(edge_info) => Some(edge_info),
+            Reply::Edge(edge) => Some(edge),
             _ => None,
         }
     }
 
-    pub fn into_node_info(self) -> Option<Node> {
+    pub fn into_node(self) -> Option<Node> {
         match self {
-            Reply::Node(node_info) => Some(node_info),
+            Reply::Node(node) => Some(node),
             _ => None,
         }
     }
@@ -152,8 +218,8 @@ impl Reply {
         }
     }
 
-    pub fn from_graph(graph: Result<Graph>) -> Reply {
-        match graph {
+    pub fn from_graph(result: Result<Graph>) -> Reply {
+        match result {
             Ok(graph) => Reply::Graph(graph),
             Err(e) => Reply::Error(e.to_string()),
         }
@@ -166,9 +232,9 @@ impl Reply {
         }
     }
 
-    pub fn from_node(node: Result<&Node>) -> Reply {
-        match node {
-            Ok(node) => Reply::Node(*node),
+    pub fn from_node(result: Result<Node>) -> Reply {
+        match result {
+            Ok(node) => Reply::Node(node),
             Err(e) => Reply::Error(e.to_string()),
         }
     }
@@ -180,23 +246,16 @@ impl Reply {
         }
     }
 
-    pub fn from_vertex_info(info: Result<Node>) -> Reply {
-        match info {
-            Ok(info) => Reply::Node(info),
-            Err(e) => Reply::Error(e.to_string()),
-        }
-    }
-
-    pub fn from_vertex_info_list(info: Result<Vec<Node>>) -> Reply {
+    pub fn from_node_list(info: Result<Vec<Node>>) -> Reply {
         match info {
             Ok(info) => Reply::NodeList(info),
             Err(e) => Reply::Error(e.to_string()),
         }
     }
 
-    pub fn from_edge_info(info: Result<EdgeInfo>) -> Reply {
-        match info {
-            Ok(info) => Reply::EdgeInfo(info),
+    pub fn from_edge(result: Result<Edge>) -> Reply {
+        match result {
+            Ok(edge) => Reply::Edge(edge),
             Err(e) => Reply::Error(e.to_string()),
         }
     }
