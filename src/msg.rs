@@ -78,7 +78,28 @@ pub struct Edge {
     pub properties: JsonValue,
 }
 
-impl Edge {}
+impl From<EdgeKey> for Edge {
+    fn from(edge_key: EdgeKey) -> Self {
+        Self {
+            from: edge_key.outbound_id,
+            to: edge_key.inbound_id,
+            edge_type: edge_key.t.0,
+            ..Default::default()
+        }
+    }
+}
+
+impl TryInto<EdgeKey> for Edge {
+    type Error = Error;
+
+    fn try_into(self) -> Result<EdgeKey> {
+        Ok(EdgeKey {
+            outbound_id: self.from,
+            inbound_id: self.to,
+            t: Type(self.edge_type),
+        })
+    }
+}
 
 // pub type Edge = JsonValue;
 
@@ -145,29 +166,6 @@ impl From<NodeId> for Node {
     //         inbound_edges: todo!(),
     //     }
     // }
-}
-
-impl From<EdgeKey> for Edge {
-    fn from(edge_key: EdgeKey) -> Self {
-        Self {
-            from: edge_key.outbound_id,
-            to: edge_key.inbound_id,
-            edge_type: edge_key.t.0,
-            ..Default::default()
-        }
-    }
-}
-
-impl TryInto<EdgeKey> for Edge {
-    type Error = Error;
-
-    fn try_into(self) -> Result<EdgeKey> {
-        Ok(EdgeKey {
-            outbound_id: self.from,
-            inbound_id: self.to,
-            t: Type(self.edge_type),
-        })
-    }
 }
 
 #[derive(Debug, Clone)]

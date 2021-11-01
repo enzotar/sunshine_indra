@@ -8,18 +8,18 @@ pub enum Error {
     #[error("error while creating transaction: {0}.")]
     CreateTransaction(indradb::Error),
 
-    #[error("error while creating vertex: {0}.")]
-    CreateVertex(indradb::Error),
-    #[error("error while setting vertex properties: {0}.")]
-    SetVertexProperties(indradb::Error),
+    #[error("error while creating node: {0}.")]
+    CreateNode(indradb::Error),
+    #[error("error while setting node properties: {0}.")]
+    SetNodeProperties(indradb::Error),
     #[error("error while getting vertices: {0}.")]
-    GetVertices(indradb::Error),
-    #[error("error while getting edges of a vertex: {0}.")]
-    GetEdgesOfVertex(indradb::Error),
-    #[error("error while updating vertex: {0}.")]
-    UpdateVertex(indradb::Error),
-    #[error("error while deleting vertex: {0}.")]
-    DeleteVertex(indradb::Error),
+    GetNodes(indradb::Error),
+    #[error("error while getting edges of a node: {0}.")]
+    GetEdgesOfNodes(indradb::Error),
+    #[error("error while updating node: {0}.")]
+    UpdateNode(indradb::Error),
+    #[error("error while deleting node: {0}.")]
+    DeleteNode(indradb::Error),
 
     #[error("Custom type name is invalid.")]
     CreateType(indradb::ValidationError),
