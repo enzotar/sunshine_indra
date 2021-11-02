@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-indradb-lib = { version = "2", features = ["sled-datastore"] }
+indradb-lib = { version = "2", features = ["rocksdb-datastore"] }
 serde_json = "1.0.68"
 uuid = { version = "0.8", features = ["v4"] }
 thiserror = "1.0.30"

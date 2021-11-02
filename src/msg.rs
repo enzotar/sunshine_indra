@@ -1,33 +1,34 @@
-use crate::{
-    error::{Error, Result},
-    store::Store,
-};
+use crate::error::{Error, Result};
 use indradb::{EdgeKey, Type};
 use serde_json::Value as JsonValue;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub enum Msg {
     MutateState(MutateState),
     Query(Query),
     CreateGraph(JsonValue),
+    DeleteGraph(GraphId),
+    Undo,
 }
 
+#[derive(Clone)]
 pub struct MutateState {
     pub kind: MutateStateKind,
     pub graph_id: GraphId,
 }
+#[derive(Clone)]
 pub enum MutateStateKind {
-    DeleteGraph(GraphId),
-    CreateNode(Node),
+    CreateNode(JsonValue),
     UpdateNode((NodeId, JsonValue)),
-    DeleteNode(Node),
+    DeleteNode(NodeId),
     CreateEdge(Edge),
-    UpdateEdge((Edge, JsonValue)),
+    UpdateEdge(Edge),
     DeleteEdge(Edge),
-    ReverseEdge(Edge),
 }
 
+#[derive(Clone)]
 // no graph id needed
 pub enum Query {
     ListGraphs,
@@ -38,7 +39,7 @@ pub enum Query {
 
 #[derive(Debug, Clone)]
 pub struct Graph {
-    pub vertices: Vec<Node>,
+    pub nodes: Vec<Node>,
     pub state_id: u64,
 }
 
@@ -61,18 +62,9 @@ pub struct Node {
 //     name: String,
 // }
 
-impl Node {
-    pub fn from_properties(properties: JsonValue) -> Self {
-        Self {
-            properties,
-            ..Default::default()
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct Edge {
-    pub id: EdgeId,
+    pub id: EdgeId, // EdgeType
     pub from: NodeId,
     pub to: NodeId,
     pub properties: JsonValue,
@@ -91,26 +83,15 @@ impl TryFrom<EdgeKey> for Edge {
     }
 }
 
-impl TryInto<EdgeKey> for Edge {
-    type Error = Error;
-
-    fn try_into(self) -> Result<EdgeKey> {
-        Ok(EdgeKey {
-            outbound_id: self.from,
-            inbound_id: self.to,
-            t: Type(self.id.to_string()),
-        })
+impl From<Edge> for EdgeKey {
+    fn from(edge: Edge) -> EdgeKey {
+        EdgeKey {
+            outbound_id: edge.from,
+            inbound_id: edge.to,
+            t: Type(edge.id.to_string()),
+        }
     }
 }
-
-// pub type Edge = JsonValue;
-
-// #[derive(Debug, Clone)]
-// pub struct EdgeId {
-//     pub from: NodeId,
-//     pub to: NodeId,
-//     pub edge_type: String,
-// }
 
 #[derive(Debug, Clone)]
 pub enum Reply {
