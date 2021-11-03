@@ -10,7 +10,7 @@ pub enum Msg {
     Query(Query),
     CreateGraph(JsonValue),
     DeleteGraph(GraphId),
-    Undo,
+    // Undo,
 }
 
 #[derive(Clone)]
@@ -24,12 +24,11 @@ pub enum MutateStateKind {
     UpdateNode((NodeId, JsonValue)),
     DeleteNode(NodeId),
     CreateEdge(Edge),
-    UpdateEdge(Edge),
+    UpdateEdge((Edge, JsonValue)),
     DeleteEdge(Edge),
 }
 
 #[derive(Clone)]
-// no graph id needed
 pub enum Query {
     ListGraphs,
     ReadNode(NodeId),
@@ -95,7 +94,7 @@ impl From<Edge> for EdgeKey {
 
 #[derive(Debug, Clone)]
 pub enum Reply {
-    Id(String),
+    Id(Uuid),
     NodeList(Vec<Node>),
     Node(Node),
     Edge(Edge),
@@ -127,7 +126,7 @@ impl Reply {
 
     pub fn as_id(&self) -> Option<&str> {
         match self {
-            Reply::Id(id) => Some(id.as_str()),
+            Reply::Id(id) => Some(id.to_string().as_str()), //todo
             _ => None,
         }
     }
