@@ -42,6 +42,9 @@ pub enum Error {
     UpdateEdgeProperties(indradb::Error),
     #[error("error, could not delete edge: {0}.")]
     DeleteEdge(indradb::Error),
+
+    #[error("error, can't undo when buffer is empty.")]
+    UndoBufferEmpty,
 }
 
 impl From<uuid::Error> for Error {

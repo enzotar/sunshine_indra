@@ -10,7 +10,7 @@ pub enum Msg {
     Query(Query),
     CreateGraph(JsonValue),
     DeleteGraph(GraphId),
-    // Undo,
+    Undo,
 }
 
 #[derive(Clone)]
@@ -21,9 +21,10 @@ pub struct MutateState {
 #[derive(Clone)]
 pub enum MutateStateKind {
     CreateNode(JsonValue),
+    RecreateNode(RecreateNode),
     UpdateNode((NodeId, JsonValue)),
     DeleteNode(NodeId),
-    CreateEdge(Edge),
+    CreateEdge(CreateEdge),
     UpdateEdge((Edge, JsonValue)),
     DeleteEdge(Edge),
 }
@@ -32,7 +33,7 @@ pub enum MutateStateKind {
 pub enum Query {
     ListGraphs,
     ReadNode(NodeId),
-    ReadEdge(Edge),
+    ReadEdgeProperties(Edge),
     ReadGraph(GraphId),
 }
 
@@ -48,6 +49,13 @@ pub type NodeId = Uuid;
 pub type EdgeId = Uuid;
 
 #[derive(Debug, Clone, Default)]
+pub struct RecreateNode {
+    pub node_id: NodeId,
+    pub properties: JsonValue,
+    pub edges: Vec<(Edge, JsonValue)>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct Node {
     pub node_id: NodeId,
     pub properties: JsonValue,
@@ -61,9 +69,15 @@ pub struct Node {
 //     name: String,
 // }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Edge {
     pub id: EdgeId, // EdgeType
+    pub from: NodeId,
+    pub to: NodeId,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CreateEdge {
     pub from: NodeId,
     pub to: NodeId,
     pub properties: JsonValue,
@@ -77,7 +91,6 @@ impl TryFrom<EdgeKey> for Edge {
             from: edge_key.outbound_id,
             to: edge_key.inbound_id,
             id: Uuid::parse_str(edge_key.t.0.as_str())?,
-            ..Default::default()
         })
     }
 }
@@ -99,6 +112,7 @@ pub enum Reply {
     Node(Node),
     Edge(Edge),
     Graph(Graph),
+    Json(JsonValue),
     Empty,
 }
 
@@ -124,9 +138,9 @@ impl Reply {
         }
     }
 
-    pub fn as_id(&self) -> Option<&str> {
+    pub fn as_id(&self) -> Option<Uuid> {
         match self {
-            Reply::Id(id) => Some(id.to_string().as_str()), //todo
+            Reply::Id(id) => Some(*id),
             _ => None,
         }
     }
