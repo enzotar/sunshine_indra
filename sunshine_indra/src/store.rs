@@ -103,8 +103,8 @@ impl sunshine_core::Store for Store {
                 start_id: None,
             })
             .map_err(Error::GetNodes)?
-            .iter()
-            .map(|node| async { self.read_node(node.id).await });
+            .into_iter()
+            .map(|node| async move { self.read_node(node.id).await });
 
         futures::future::try_join_all(futures).await
     }
@@ -280,7 +280,7 @@ impl sunshine_core::Store for Store {
         let fut = recreate_node
             .edges
             .into_iter()
-            .map(|(edge, props)| async { self.recreate_edge(edge, props).await });
+            .map(|(edge, props)| async move { self.recreate_edge(edge, props).await });
 
         futures::future::try_join_all(fut).await?;
 
@@ -331,7 +331,7 @@ impl sunshine_core::Store for Store {
             .inbound_edges
             .into_iter()
             .chain(deleted_node.outbound_edges.into_iter())
-            .map(|edge| async {
+            .map(|edge| async move {
                 self.read_edge_properties(edge)
                     .await
                     .map(|props| (edge, props))
