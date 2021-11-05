@@ -1,6 +1,9 @@
 use std::result::Result as StdResult;
 use thiserror::Error as ThisError;
 
+unsafe impl Send for Error {}
+unsafe impl Sync for Error {}
+
 #[derive(Debug, ThisError)]
 pub enum Error {
     #[error("error while creating datastore: {0}.")]

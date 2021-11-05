@@ -1,4 +1,3 @@
-pub mod error;
 pub mod store;
 
 // use msg::{EdgeInfo, GraphId, Msg, MutateState, MutateStateKind, Node, Query};

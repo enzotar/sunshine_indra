@@ -1,0 +1,146 @@
+class GraphQueries {
+  static String cheetahNodeQuery() => """{
+      find(func: uid("0x2"))  @recurse{
+      uid
+      name
+      display
+      inlineDisplay
+      link
+      }
+    }""";
+
+  /// TODO Document what the purpose of this query is. "entries" is too general.
+  static String entries(String uid) => """{
+            find(func: uid("$uid"))  @recurse{
+              uid
+              name
+              display
+              inlineDisplay
+              validation
+              action
+              link
+              options
+              selectionMode
+              }
+            }
+              """;
+
+  static String userModel() => """{
+                        find(func: uid("0x2"))  @recurse{
+                          uid
+                        name
+                        display
+                        inlineDisplay
+                        action
+                        link
+                        }
+                      }
+                        """;
+
+  static String rootNodes(String rootNodeUid) => """{
+                  find(func: uid("$rootNodeUid"))  @recurse{
+                    uid
+                    name
+                    display
+                    inlineDisplay
+                    validation
+                    action
+                    link
+                    }
+                  }
+                    """;
+
+  static String mutateNode(String parentUid, String newNodeName) => """{
+                "set":{
+                  "uid":"0x2711",
+                  "link":{
+                  "name":"$newNodeName"
+                  }
+                }
+              }
+              """;
+
+  static String createNode({
+    required String parentUid,
+    required String newNodeName,
+    required String inlineDisplay,
+    String display = "listViewer",
+    // String inlineDisplay = "textButton",
+    String action = "noAction",
+  }) =>
+      """{
+                "set":{
+                  "uid":"$parentUid",
+                  "link":{
+                  "name":"$newNodeName",
+                  "display":"$display",
+                  "inlineDisplay":"$inlineDisplay",
+                  "action":"$action"
+                  }
+                }
+              }
+              """;
+
+  /// TODO This name is too general. Add what if what is absent?
+  static String addIfAbsent(String value) => """{
+                  find(func: eq(name, "$value"))  @recurse{
+                    uid
+                    name
+                    display
+                    inlineDisplay
+                    validation
+                    action
+                    link
+                    }
+                  }
+                    """;
+
+  static String fetchUserData(String uid) => """{
+                  find(func: eq(firebaseUid, "${uid}"))  {
+                    uid
+                    name
+                    link
+                    }
+                  }
+                    """;
+
+  static String fetchMyListings(String userUid) => """{
+                    find(func: uid("0xe")){
+                        uid
+                        link @facets(eq,"$userUid"){
+                        uid
+                        }
+                      }
+                    }
+                    """;
+
+  // Node 0xe is a node with name listing.
+  // Connect listing node to a new node with
+  static String createListing(String userUid) => """{
+                "set":{
+                  "uid":"0xe",
+                  "link":[{
+                  "link|userId":"$userUid"
+                  }]
+                }
+              }
+              """;
+
+  static String addEdge({
+    required String fromNode,
+    required String toNode,
+    required String facetId,
+    required String facetValue,
+  }) {
+    return """{
+                "set":{
+                  "uid":"$fromNode",
+                  "link":[{
+                  "uid":"$toNode",
+                  "link|$facetId":"$facetValue"
+                  }]
+                }
+              }
+             """;
+  }
+}
