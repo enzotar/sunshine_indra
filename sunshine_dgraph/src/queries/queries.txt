@@ -1,3 +1,73 @@
+read_node
+"""
+find(func: uid("{node_id}"))  {
+                    uid
+                    link{
+                      uid
+                    }
+                    }
+"""
+
+
+createNode
+
+      """{
+                "set":{
+                  "uid":"$parentUid",
+                  "link":{
+                  "name":"$newNodeName",
+                  "node_type:
+                  
+                  }
+                }
+              }
+              """;
+
+CreateNode no parent
+
+        /*
+        {
+                "set":{
+                  "indra_id":"{}",
+                  "state_id":"0"
+                }
+              }
+               */
+
+
+
+Upsert Example with math function
+upsert {{
+                    query {{
+                        q(func: eq(indra_id,"{}")) {{
+                        u as uid
+                        s as state_id
+                        n as math(s+1)
+                        indra_id
+                        }}
+                    }}
+                    
+                    mutation {{
+                        set {{
+                            uid(u) <state_id> val(n).
+                        }}
+                    }}
+                }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class GraphQueries {
   static String cheetahNodeQuery() => """{
       find(func: uid("0x2"))  @recurse{
@@ -60,26 +130,7 @@ class GraphQueries {
               }
               """;
 
-  static String createNode({
-    required String parentUid,
-    required String newNodeName,
-    required String inlineDisplay,
-    String display = "listViewer",
-    // String inlineDisplay = "textButton",
-    String action = "noAction",
-  }) =>
-      """{
-                "set":{
-                  "uid":"$parentUid",
-                  "link":{
-                  "name":"$newNodeName",
-                  "display":"$display",
-                  "inlineDisplay":"$inlineDisplay",
-                  "action":"$action"
-                  }
-                }
-              }
-              """;
+
 
   /// TODO This name is too general. Add what if what is absent?
   static String addIfAbsent(String value) => """{

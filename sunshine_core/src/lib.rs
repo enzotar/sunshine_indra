@@ -36,6 +36,10 @@ pub trait Store: Send + Sync {
                 .create_graph(properties)
                 .await
                 .map(|(reverse_msg, node)| (Some(reverse_msg), Reply::Id(node)))?,
+            Msg::CreateGraphWithId(uuid, properties) => self
+                .create_graph_with_id(uuid, properties)
+                .await
+                .map(|(reverse_msg, node)| (Some(reverse_msg), Reply::Id(node)))?,
             Msg::MutateState(mutate_state) => self
                 .execute_mutate_state(mutate_state)
                 .await
@@ -122,17 +126,24 @@ pub trait Store: Send + Sync {
         }
     }
 
-    async fn update_state_id(&self, graph_id: Uuid) -> Result<()>;
+    async fn update_state_id(&self, graph_id: GraphId) -> Result<()>;
 
-    async fn create_graph(&self, properties: JsonValue) -> Result<(Msg, GraphId)>;
+    async fn create_graph(&self, properties: JsonValue) -> Result<(Msg, GraphId)> {
+        self.create_graph_with_id(indradb::util::generate_uuid_v1(), properties)
+            .await
+    }
+
+    async fn create_graph_with_id(
+        &self,
+        graph_id: GraphId,
+        properties: JsonValue,
+    ) -> Result<(Msg, GraphId)>;
 
     async fn list_graphs(&self) -> Result<Vec<Node>>;
 
     async fn read_graph(&self, graph_id: GraphId) -> Result<Graph>;
 
     async fn create_node(&self, args: (GraphId, JsonValue)) -> Result<(Msg, NodeId)>;
-
-    async fn create_graph_root(&self, properties: JsonValue) -> Result<NodeId>;
 
     async fn read_node(&self, node_id: NodeId) -> Result<Node>;
 

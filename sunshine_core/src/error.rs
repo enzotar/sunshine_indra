@@ -46,6 +46,14 @@ pub enum Error {
     UndoBufferEmpty,
     #[error("error, can't redo when buffer is empty.")]
     RedoBufferEmpty,
+    #[error("error when handling json: {0}.")]
+    JsonError(serde_json::Error),
+    #[error("error, http client error: {0}")]
+    HttpClientError(reqwest::Error),
+    #[error("error, dgraph error: {0}.")]
+    DGraphError(String),
+    #[error("error, operation isn't implemented.")]
+    Unimplemented,
 }
 
 impl From<uuid::Error> for Error {

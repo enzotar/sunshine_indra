@@ -62,6 +62,28 @@ pub async fn query() -> std::result::Result<DNode, Box<dyn std::error::Error>> {
     Ok(root_node.clone())
 }
 
+/*
+curl -H "Content-Type: application/rdf" -X POST localhost:8080/mutate?commitNow=true -d $'
+upsert {
+  query {
+    q(func: eq(email, "user@company1.io")) {
+      v as uid
+      name
+    }
+  }
+
+  mutation {
+    set {
+      uid(v) <name> "first last" .
+      uid(v) <email> "user@company1.io" .
+    }
+  }
+}' | jq
+*/
+
+const MUTATE: &str = "/mutate?commitNow=true";
+const QUERY: &str = "/query";
+
 #[async_trait::async_trait]
 impl sunshine_core::Store for Store {
     fn undo_buf(&mut self) -> &mut Vec<Msg> {
@@ -76,12 +98,97 @@ impl sunshine_core::Store for Store {
         &mut self.history
     }
 
-    async fn update_state_id(&self, graph_id: Uuid) -> Result<()> {
-        todo!();
+    async fn update_state_id(&self, graph_id: GraphId) -> Result<()> {
+        let url = self.base_url.to_owned() + MUTATE;
+
+        let res = self
+            .client
+            .post(url)
+            .body(format!(
+                r#"upsert {{
+                    query {{
+                        q(func: eq(indra_id,"{}")) {{
+                        u as uid
+                        s as state_id
+                        n as math(s+1)
+                        indra_id
+                        }}
+                    }}
+                    
+                    mutation {{
+                        set {{
+                            uid(u) <state_id> val(n).
+                        }}
+                    }}
+                }}
+                "#,
+                graph_id
+            ))
+            .header(
+                "x-auth-token",
+                "NmY2YWQ1YzlkNjg4NjUwMzc0MDJmMjk4ZTg3Yzk5Yzc=",
+            )
+            .header("Content-Type", "application/rdf")
+            .send()
+            .await
+            .unwrap();
+
+        let json = res
+            .json::<JsonValue>()
+            .await
+            .map_err(Error::HttpClientError)?;
+
+        if json.as_object().unwrap().contains_key("errors") {
+            let err = serde_json::to_string_pretty(&json).map_err(Error::JsonError)?;
+            return Err(Error::DGraphError(err));
+        }
+
+        Ok(())
     }
 
-    async fn create_graph(&self, properties: JsonValue) -> Result<(Msg, GraphId)> {
-        todo!();
+    async fn create_graph(&self, _: JsonValue) -> Result<(Msg, GraphId)> {
+        Err(Error::Unimplemented)
+    }
+
+    async fn create_graph_with_id(
+        &self,
+        graph_id: GraphId,
+        properties: JsonValue,
+    ) -> Result<(Msg, GraphId)> {
+        let url = self.base_url.to_owned() + MUTATE;
+
+        let res = self
+            .client
+            .post(url)
+            .body(format!(
+                r#"{{
+                    "set":{{
+                      "indra_id":"{}",
+                      "state_id":"0" // add properties
+                    }}
+                }}"#,
+                graph_id
+            ))
+            .header(
+                "x-auth-token",
+                "NmY2YWQ1YzlkNjg4NjUwMzc0MDJmMjk4ZTg3Yzk5Yzc=",
+            )
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+            .unwrap();
+
+        let json = res
+            .json::<JsonValue>()
+            .await
+            .map_err(Error::HttpClientError)?;
+
+        if json.as_object().unwrap().contains_key("errors") {
+            let err = serde_json::to_string_pretty(&json).map_err(Error::JsonError)?;
+            return Err(Error::DGraphError(err));
+        }
+
+        Ok((Msg::DeleteGraph(graph_id), graph_id))
     }
 
     async fn list_graphs(&self) -> Result<Vec<Node>> {
@@ -96,10 +203,6 @@ impl sunshine_core::Store for Store {
         &self,
         (graph_id, properties): (GraphId, JsonValue),
     ) -> Result<(Msg, NodeId)> {
-        todo!();
-    }
-
-    async fn create_graph_root(&self, properties: JsonValue) -> Result<NodeId> {
         todo!();
     }
 
@@ -153,4 +256,39 @@ struct Store {
     undo: Vec<Msg>,
     redo: Vec<Msg>,
     history: Vec<Msg>,
+    client: reqwest::Client,
+    base_url: String,
 }
+
+impl Store {
+    pub fn new<S: Into<String>>(base_url: S) -> Store {
+        let client = reqwest::Client::builder().build().unwrap();
+        Store {
+            undo: Vec::new(),
+            redo: Vec::new(),
+            history: Vec::new(),
+            client,
+            base_url: base_url.into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Store as StoreImpl;
+    use super::*;
+    use std::str::FromStr;
+    use sunshine_core::Store;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_update_state_id() {
+        let store = StoreImpl::new("https://quiet-leaf.us-west-2.aws.cloud.dgraph.io");
+        store
+            .update_state_id(Uuid::from_str("2ac209c6-40ce-11ec-9884-8b4b20e8c2eb").unwrap())
+            .await
+            .unwrap();
+    }
+}
+
+// 0xfffd8d6aac73f42d
+// 2ac209c6-40ce-11ec-9884-8b4b20e8c2eb

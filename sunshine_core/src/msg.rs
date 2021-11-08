@@ -8,6 +8,7 @@ pub enum Msg {
     MutateState(MutateState),
     Query(Query),
     CreateGraph(JsonValue),
+    CreateGraphWithId(GraphId, JsonValue),
     DeleteGraph(GraphId),
     Undo,
     Redo,

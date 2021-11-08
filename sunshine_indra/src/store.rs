@@ -47,6 +47,26 @@ impl Store {
             .transaction()
             .map_err(Error::CreateTransaction)
     }
+
+    async fn create_graph_root(&self, graph_id: GraphId, properties: JsonValue) -> Result<NodeId> {
+        let trans = self.transaction()?;
+
+        let node_type = Type::new(GRAPH_ROOT_TYPE).map_err(Error::CreateType)?;
+        let node: Vertex = Vertex::with_id(graph_id, node_type);
+        trans.create_vertex(&node).map_err(Error::CreateNode)?;
+
+        let vertex_query = SpecificVertexQuery::single(node.id).into();
+
+        let vertex_property_query = VertexPropertyQuery {
+            inner: vertex_query,
+            name: VERTEX_PROPERTY_HOLDER.into(),
+        };
+        trans
+            .set_vertex_properties(vertex_property_query, &properties)
+            .map_err(Error::SetNodeProperties)?;
+
+        Ok(node.id)
+    }
 }
 
 pub struct Config {
@@ -81,7 +101,11 @@ impl sunshine_core::Store for Store {
         Ok(())
     }
 
-    async fn create_graph(&self, properties: JsonValue) -> Result<(Msg, GraphId)> {
+    async fn create_graph_with_id(
+        &self,
+        graph_id: GraphId,
+        properties: JsonValue,
+    ) -> Result<(Msg, GraphId)> {
         let mut properties = properties;
         let state_id = JsonValue::Number(serde_json::Number::from(0u64));
         properties
@@ -89,7 +113,7 @@ impl sunshine_core::Store for Store {
             .unwrap()
             .insert(STATE_ID_PROPERTY.into(), state_id);
 
-        let node_id = self.create_graph_root(properties).await?;
+        let node_id = self.create_graph_root(graph_id, properties).await?;
 
         Ok((Msg::DeleteGraph(node_id), node_id))
     }
@@ -166,26 +190,6 @@ impl sunshine_core::Store for Store {
             }),
             node.id,
         ))
-    }
-
-    async fn create_graph_root(&self, properties: JsonValue) -> Result<NodeId> {
-        let trans = self.transaction()?;
-
-        let node_type = Type::new(GRAPH_ROOT_TYPE).map_err(Error::CreateType)?;
-        let node: Vertex = Vertex::new(node_type);
-        trans.create_vertex(&node).map_err(Error::CreateNode)?;
-
-        let vertex_query = SpecificVertexQuery::single(node.id).into();
-
-        let vertex_property_query = VertexPropertyQuery {
-            inner: vertex_query,
-            name: VERTEX_PROPERTY_HOLDER.into(),
-        };
-        trans
-            .set_vertex_properties(vertex_property_query, &properties)
-            .map_err(Error::SetNodeProperties)?;
-
-        Ok(node.id)
     }
 
     async fn read_node(&self, node_id: NodeId) -> Result<Node> {

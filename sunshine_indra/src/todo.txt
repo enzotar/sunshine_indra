@@ -1,11 +1,13 @@
 
 // TODOs
-// cloud sync
+
 Dgraph 
     create node,
     create edge
 
 // delete graph
+// update graph
+// undo and redo in indra and cloud??
 // clear database/ init
 
 // unit tests

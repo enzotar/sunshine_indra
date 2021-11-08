@@ -1050,6 +1050,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "indradb-lib",
+ "reqwest",
  "serde_json",
  "thiserror",
  "uuid",
