@@ -1,4 +1,6 @@
-use serde_json::Value as JsonValue;
+use std::collections::HashMap;
+
+use serde_json::{json, Value as JsonValue};
 use uuid::Uuid;
 
 mod queries;
@@ -13,73 +15,32 @@ use sunshine_core::msg::{
 };
 
 use sunshine_core::{Error, Result};
+// #[tokio::main]
+// pub async fn query() -> std::result::Result<DNode, Box<dyn std::error::Error>> {
+//     let client = reqwest::Client::new();
 
-#[tokio::main]
-pub async fn query() -> std::result::Result<DNode, Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-    // let query_by_uid = |uid: &str| {
-    //     format!(
-    //         r#"{{
-    //             find(func: uid({}))  @recurse{{
-    //                 uid
-    //                 name
-    //                 display
-    //                 inlineDisplay
-    //                 validation
-    //                 action
-    //                 link
-    //                 options
-    //                 selectionMode
-    //             }}
-    //         }}"#,
-    //         uid
-    //     )
-    // };
+//     let url = "https://quiet-leaf.us-west-2.aws.cloud.dgraph.io/query?=";
+//     let uid = "0x170f16be";
 
-    //mutate?commitNow=true
+//     let res = client
+//         .post(url)
+//         .body(query_by_uid(uid))
+//         .header(
+//             "x-auth-token",
+//             "NmY2YWQ1YzlkNjg4NjUwMzc0MDJmMjk4ZTg3Yzk5Yzc=",
+//         )
+//         .header("Content-Type", "application/graphql+-")
+//         .send()
+//         .await?;
 
-    let url = "https://quiet-leaf.us-west-2.aws.cloud.dgraph.io/query?=";
-    let uid = "0x170f16be";
+//     let t: Root = res.json().await?;
 
-    let res = client
-        .post(url)
-        .body(query_by_uid(uid))
-        .header(
-            "x-auth-token",
-            "NmY2YWQ1YzlkNjg4NjUwMzc0MDJmMjk4ZTg3Yzk5Yzc=",
-        )
-        .header("Content-Type", "application/graphql+-")
-        .send()
-        .await?;
+//     let root_node: &DNode = &t.data.find.first().unwrap();
 
-    let t: Root = res.json().await?;
+//     dbg!(t.clone());
 
-    let root_node: &DNode = &t.data.find.first().unwrap();
-
-    dbg!(t.clone());
-    // rid::log_debug!("Got query {:#?}", &root_node);
-
-    Ok(root_node.clone())
-}
-
-/*
-curl -H "Content-Type: application/rdf" -X POST localhost:8080/mutate?commitNow=true -d $'
-upsert {
-  query {
-    q(func: eq(email, "user@company1.io")) {
-      v as uid
-      name
-    }
-  }
-
-  mutation {
-    set {
-      uid(v) <name> "first last" .
-      uid(v) <email> "user@company1.io" .
-    }
-  }
-}' | jq
-*/
+//     Ok(root_node.clone())
+// }
 
 const MUTATE: &str = "/mutate?commitNow=true";
 const QUERY: &str = "/query";
@@ -157,18 +118,19 @@ impl sunshine_core::Store for Store {
     ) -> Result<(Msg, GraphId)> {
         let url = self.base_url.to_owned() + MUTATE;
 
+        let create_graph = Mutate {
+            set: MutateCreateGraph {
+                indra_id: graph_id.to_string(),
+                state_id: 0,
+                properties: properties,
+            },
+        };
+        let create_graph = serde_json::to_string(&create_graph).unwrap();
+
         let res = self
             .client
             .post(url)
-            .body(format!(
-                r#"{{
-                    "set":{{
-                      "indra_id":"{}",
-                      "state_id":"0" // add properties
-                    }}
-                }}"#,
-                graph_id
-            ))
+            .body(create_graph)
             .header(
                 "x-auth-token",
                 "NmY2YWQ1YzlkNjg4NjUwMzc0MDJmMjk4ZTg3Yzk5Yzc=",
@@ -277,6 +239,7 @@ impl Store {
 mod tests {
     use super::Store as StoreImpl;
     use super::*;
+    use serde_json::json;
     use std::str::FromStr;
     use sunshine_core::Store;
 
@@ -288,7 +251,24 @@ mod tests {
             .await
             .unwrap();
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_create_graph_with_id() {
+        let store = StoreImpl::new("https://quiet-leaf.us-west-2.aws.cloud.dgraph.io");
+        let properties = json!({
+            "name":"test",
+            "cost":2500,
+        });
+        store
+            .create_graph_with_id(
+                Uuid::from_str("0d0bd4ee-40f0-11ec-973a-0242ac130003").unwrap(),
+                properties,
+            )
+            .await
+            .unwrap();
+    }
 }
 
 // 0xfffd8d6aac73f42d
 // 2ac209c6-40ce-11ec-9884-8b4b20e8c2eb
+//0d0bd4ee-40f0-11ec-973a-0242ac130003

@@ -1,37 +1,19 @@
-pub fn query_by_uid(uid: &str) -> String {
-    format!(
-        r#"{{
-                find(func: uid({}))  @recurse{{
-                    uid
-                    name
-                    display
-                    inlineDisplay
-                    validation
-                    action
-                    link
-                    options
-                    selectionMode
-                }}
-            }}"#,
-        uid
-    )
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Mutate {
+    pub set: MutateCreateGraph,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MutateCreateGraph {
+    pub indra_id: String,
+    pub state_id: i32,
+    #[serde(flatten)]
+    pub properties: Value,
+}
 
-
-
-
-/*
- {
-                "set":{
-                  "uid":"$parentUid",
-                  "link":{
-                  "name":"$newNodeName",
-                  "display":"$display",
-                  "inlineDisplay":"$inlineDisplay",
-                  "action":"$action"
-                  }
-                }
-              }
-
-*/
+// Query Builder

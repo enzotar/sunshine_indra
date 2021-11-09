@@ -60,7 +60,24 @@ upsert {{
 
 
 
-
+    // let query_by_uid = |uid: &str| {
+    //     format!(
+    //         r#"{{
+    //             find(func: uid({}))  @recurse{{
+    //                 uid
+    //                 name
+    //                 display
+    //                 inlineDisplay
+    //                 validation
+    //                 action
+    //                 link
+    //                 options
+    //                 selectionMode
+    //             }}
+    //         }}"#,
+    //         uid
+    //     )
+    // };
 
 
 

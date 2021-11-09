@@ -1,6 +1,6 @@
 use indradb::{EdgeKey, Type};
 use serde_json::Value as JsonValue;
-use std::convert::TryFrom;
+use std::{collections::HashMap, convert::TryFrom, hash::Hash};
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -14,6 +14,8 @@ pub enum Msg {
     Redo,
 }
 
+pub type Properties = JsonValue;
+
 #[derive(Clone, Debug)]
 pub struct MutateState {
     pub kind: MutateStateKind,
@@ -21,12 +23,12 @@ pub struct MutateState {
 }
 #[derive(Clone, Debug)]
 pub enum MutateStateKind {
-    CreateNode(JsonValue),
+    CreateNode(Properties),
     RecreateNode(RecreateNode),
-    UpdateNode((NodeId, JsonValue)),
+    UpdateNode((NodeId, Properties)),
     DeleteNode(NodeId),
     CreateEdge(CreateEdge),
-    UpdateEdge((Edge, JsonValue)),
+    UpdateEdge((Edge, Properties)),
     DeleteEdge(Edge),
 }
 
