@@ -11,7 +11,7 @@ use responses::node::{Node as DNode, Root};
 
 use sunshine_core::msg::{
     CreateEdge, Edge, EdgeId, Graph, GraphId, Msg, MutateState, MutateStateKind, Node, NodeId,
-    Query, RecreateNode, Reply,
+    Properties, Query, RecreateNode, Reply,
 };
 
 use sunshine_core::{Error, Result};
@@ -65,56 +65,48 @@ impl sunshine_core::Store for Store {
         let res = self
             .client
             .post(url)
-            .body(format!(
-                r#"upsert {{
-                    query {{
-                        q(func: eq(indra_id,"{}")) {{
-                        u as uid
-                        s as state_id
-                        n as math(s+1)
-                        indra_id
-                        }}
+            .json(&serde_json::json!({
+                "query": format!(r#"{{
+                    q(func: eq(indra_id,"{}")) {{
+                    u as uid
+                    s as state_id
+                    n as math(s+1)
+                    indra_id
                     }}
-                    
-                    mutation {{
-                        set {{
-                            uid(u) <state_id> val(n).
-                        }}
-                    }}
-                }}
-                "#,
-                graph_id
-            ))
+                }}"#, graph_id),
+                "set": {
+                    "uid": "uid(u)",
+                    "state_id": "val(n)",
+                },
+            }))
             .header(
                 "x-auth-token",
                 "NmY2YWQ1YzlkNjg4NjUwMzc0MDJmMjk4ZTg3Yzk5Yzc=",
             )
-            .header("Content-Type", "application/rdf")
             .send()
             .await
             .unwrap();
 
-        let json = res
-            .json::<JsonValue>()
+        let res = res
+            .json::<DGraphResponse>()
             .await
             .map_err(Error::HttpClientError)?;
 
-        if json.as_object().unwrap().contains_key("errors") {
-            let err = serde_json::to_string_pretty(&json).map_err(Error::JsonError)?;
-            return Err(Error::DGraphError(err));
+        if let DGraphResponse::Err(e) = res {
+            return Err(Error::DGraphError(e));
         }
 
         Ok(())
     }
 
-    async fn create_graph(&self, _: JsonValue) -> Result<(Msg, GraphId)> {
+    async fn create_graph(&self, _: Properties) -> Result<(Msg, GraphId)> {
         Err(Error::Unimplemented)
     }
 
     async fn create_graph_with_id(
         &self,
         graph_id: GraphId,
-        properties: JsonValue,
+        properties: Properties,
     ) -> Result<(Msg, GraphId)> {
         let url = self.base_url.to_owned() + MUTATE;
 
@@ -125,6 +117,7 @@ impl sunshine_core::Store for Store {
                 properties: properties,
             },
         };
+
         let create_graph = serde_json::to_string(&create_graph).unwrap();
 
         let res = self
@@ -163,7 +156,7 @@ impl sunshine_core::Store for Store {
 
     async fn create_node(
         &self,
-        (graph_id, properties): (GraphId, JsonValue),
+        (graph_id, properties): (GraphId, Properties),
     ) -> Result<(Msg, NodeId)> {
         todo!();
     }
@@ -174,7 +167,7 @@ impl sunshine_core::Store for Store {
 
     async fn update_node(
         &self,
-        (node_id, value): (NodeId, JsonValue),
+        (node_id, value): (NodeId, Properties),
         graph_id: GraphId,
     ) -> Result<Msg> {
         todo!();
@@ -184,7 +177,7 @@ impl sunshine_core::Store for Store {
         todo!();
     }
 
-    async fn recreate_edge(&self, edge: Edge, properties: JsonValue) -> Result<()> {
+    async fn recreate_edge(&self, edge: Edge, properties: Properties) -> Result<()> {
         todo!();
     }
 
@@ -197,13 +190,13 @@ impl sunshine_core::Store for Store {
         todo!();
     }
 
-    async fn read_edge_properties(&self, msg: Edge) -> Result<JsonValue> {
+    async fn read_edge_properties(&self, msg: Edge) -> Result<Properties> {
         todo!();
     }
 
     async fn update_edge(
         &self,
-        (edge, properties): (Edge, JsonValue),
+        (edge, properties): (Edge, Properties),
         graph_id: GraphId,
     ) -> Result<Msg> {
         todo!();
@@ -257,8 +250,12 @@ mod tests {
         let store = StoreImpl::new("https://quiet-leaf.us-west-2.aws.cloud.dgraph.io");
         let properties = json!({
             "name":"test",
-            "cost":2500,
+            "cost":2800,
         });
+        let properties = match properties {
+            JsonValue::Object(props) => props,
+            _ => unreachable!(),
+        };
         store
             .create_graph_with_id(
                 Uuid::from_str("0d0bd4ee-40f0-11ec-973a-0242ac130003").unwrap(),

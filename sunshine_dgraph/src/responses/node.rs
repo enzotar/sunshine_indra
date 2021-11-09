@@ -81,3 +81,8 @@ pub struct NumUids {
     pub uid: i64,
     pub validation: i64,
 }
+
+// pub enum Response {
+//     NumUids(NumUids),
+//     Metrics(Metrics),
+// }

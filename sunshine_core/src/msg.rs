@@ -1,20 +1,21 @@
 use indradb::{EdgeKey, Type};
 use serde_json::Value as JsonValue;
-use std::{collections::HashMap, convert::TryFrom, hash::Hash};
+use std::convert::TryFrom;
 use uuid::Uuid;
+
+// this map can't contain Objects
+pub type Properties = serde_json::Map<String, JsonValue>;
 
 #[derive(Clone, Debug)]
 pub enum Msg {
     MutateState(MutateState),
     Query(Query),
-    CreateGraph(JsonValue),
-    CreateGraphWithId(GraphId, JsonValue),
+    CreateGraph(Properties),
+    CreateGraphWithId(GraphId, Properties),
     DeleteGraph(GraphId),
     Undo,
     Redo,
 }
-
-pub type Properties = JsonValue;
 
 #[derive(Clone, Debug)]
 pub struct MutateState {
@@ -54,14 +55,14 @@ pub type EdgeId = Uuid;
 #[derive(Debug, Clone, Default)]
 pub struct RecreateNode {
     pub node_id: NodeId,
-    pub properties: JsonValue,
-    pub edges: Vec<(Edge, JsonValue)>,
+    pub properties: Properties,
+    pub edges: Vec<(Edge, Properties)>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Node {
     pub node_id: NodeId,
-    pub properties: JsonValue,
+    pub properties: Properties,
     pub outbound_edges: Vec<Edge>,
     pub inbound_edges: Vec<Edge>,
 }
@@ -83,7 +84,7 @@ pub struct Edge {
 pub struct CreateEdge {
     pub from: NodeId,
     pub to: NodeId,
-    pub properties: JsonValue,
+    pub properties: Properties,
 }
 
 impl TryFrom<EdgeKey> for Edge {
@@ -115,7 +116,7 @@ pub enum Reply {
     Node(Node),
     Edge(Edge),
     Graph(Graph),
-    Json(JsonValue),
+    Properties(Properties),
     Empty,
 }
 

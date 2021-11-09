@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use sunshine_core::msg::{
     CreateEdge, Edge, EdgeId, Graph, GraphId, Msg, MutateState, MutateStateKind, Node, NodeId,
-    Query, RecreateNode, Reply,
+    Properties, Query, RecreateNode, Reply,
 };
 
 use sunshine_core::{Error, Result};
@@ -48,7 +48,7 @@ impl Store {
             .map_err(Error::CreateTransaction)
     }
 
-    async fn create_graph_root(&self, graph_id: GraphId, properties: JsonValue) -> Result<NodeId> {
+    async fn create_graph_root(&self, graph_id: GraphId, properties: Properties) -> Result<NodeId> {
         let trans = self.transaction()?;
 
         let node_type = Type::new(GRAPH_ROOT_TYPE).map_err(Error::CreateType)?;
@@ -62,7 +62,7 @@ impl Store {
             name: VERTEX_PROPERTY_HOLDER.into(),
         };
         trans
-            .set_vertex_properties(vertex_property_query, &properties)
+            .set_vertex_properties(vertex_property_query, &JsonValue::Object(properties))
             .map_err(Error::SetNodeProperties)?;
 
         Ok(node.id)
@@ -89,11 +89,17 @@ impl sunshine_core::Store for Store {
 
     async fn update_state_id(&self, graph_id: Uuid) -> Result<()> {
         let mut graph_root = self.read_node(graph_id).await?;
-        let properties = graph_root.properties.as_object_mut().unwrap();
-        let current_id = properties.get(STATE_ID_PROPERTY).unwrap().as_u64().unwrap();
+        let current_id = graph_root
+            .properties
+            .get(STATE_ID_PROPERTY)
+            .unwrap()
+            .as_u64()
+            .unwrap();
         let new_id = JsonValue::Number(serde_json::Number::from(current_id + 1));
 
-        properties.insert(STATE_ID_PROPERTY.into(), new_id);
+        graph_root
+            .properties
+            .insert(STATE_ID_PROPERTY.into(), new_id);
 
         self.update_node((graph_id, graph_root.properties), graph_id)
             .await?;
@@ -104,14 +110,11 @@ impl sunshine_core::Store for Store {
     async fn create_graph_with_id(
         &self,
         graph_id: GraphId,
-        properties: JsonValue,
+        properties: Properties,
     ) -> Result<(Msg, GraphId)> {
         let mut properties = properties;
         let state_id = JsonValue::Number(serde_json::Number::from(0u64));
-        properties
-            .as_object_mut()
-            .unwrap()
-            .insert(STATE_ID_PROPERTY.into(), state_id);
+        properties.insert(STATE_ID_PROPERTY.into(), state_id);
 
         let node_id = self.create_graph_root(graph_id, properties).await?;
 
@@ -144,8 +147,6 @@ impl sunshine_core::Store for Store {
 
         let state_id = graph_node
             .properties
-            .as_object()
-            .unwrap()
             .get(STATE_ID_PROPERTY)
             .unwrap()
             .as_u64()
@@ -156,7 +157,7 @@ impl sunshine_core::Store for Store {
 
     async fn create_node(
         &self,
-        (graph_id, properties): (GraphId, JsonValue),
+        (graph_id, properties): (GraphId, Properties),
     ) -> Result<(Msg, NodeId)> {
         let trans = self.transaction()?;
 
@@ -171,7 +172,7 @@ impl sunshine_core::Store for Store {
             name: VERTEX_PROPERTY_HOLDER.into(),
         };
         trans
-            .set_vertex_properties(vertex_property_query, &properties)
+            .set_vertex_properties(vertex_property_query, &JsonValue::Object(properties))
             .map_err(Error::SetNodeProperties)?;
 
         let edge_key = EdgeKey {
@@ -213,6 +214,11 @@ impl sunshine_core::Store for Store {
             _ => unreachable!(),
         };
 
+        let properties = match properties {
+            JsonValue::Object(props) => props,
+            _ => unreachable!(),
+        };
+
         let outbound_edges = trans
             .get_edges(outbound_query)
             .map_err(Error::GetEdgesOfNodes)?
@@ -239,7 +245,7 @@ impl sunshine_core::Store for Store {
 
     async fn update_node(
         &self,
-        (node_id, value): (NodeId, JsonValue),
+        (node_id, properties): (NodeId, Properties),
         graph_id: GraphId,
     ) -> Result<Msg> {
         let trans = self.transaction()?;
@@ -254,7 +260,7 @@ impl sunshine_core::Store for Store {
                     inner: query.into(),
                     name: VERTEX_PROPERTY_HOLDER.into(),
                 },
-                &value,
+                &JsonValue::Object(properties),
             )
             .map_err(Error::UpdateNode)?;
 
@@ -278,7 +284,10 @@ impl sunshine_core::Store for Store {
             name: VERTEX_PROPERTY_HOLDER.into(),
         };
         trans
-            .set_vertex_properties(vertex_property_query, &recreate_node.properties)
+            .set_vertex_properties(
+                vertex_property_query,
+                &JsonValue::Object(recreate_node.properties),
+            )
             .map_err(Error::SetNodeProperties)?;
 
         let fut = recreate_node
@@ -294,7 +303,7 @@ impl sunshine_core::Store for Store {
         }))
     }
 
-    async fn recreate_edge(&self, edge: Edge, properties: JsonValue) -> Result<()> {
+    async fn recreate_edge(&self, edge: Edge, properties: Properties) -> Result<()> {
         let trans = self.transaction()?;
         let edge_key = edge.into();
         if !trans.create_edge(&edge_key).map_err(Error::CreateEdge)? {
@@ -306,7 +315,7 @@ impl sunshine_core::Store for Store {
             name: VERTEX_PROPERTY_HOLDER.into(),
         };
         trans
-            .set_edge_properties(query, &properties)
+            .set_edge_properties(query, &JsonValue::Object(properties))
             .map_err(Error::SetEdgeProperties)?;
 
         Ok(())
@@ -371,7 +380,7 @@ impl sunshine_core::Store for Store {
             name: VERTEX_PROPERTY_HOLDER.into(),
         };
         trans
-            .set_edge_properties(query, &msg.properties)
+            .set_edge_properties(query, &JsonValue::Object(msg.properties))
             .map_err(Error::SetEdgeProperties)?;
 
         Ok((
@@ -383,7 +392,7 @@ impl sunshine_core::Store for Store {
         ))
     }
 
-    async fn read_edge_properties(&self, msg: Edge) -> Result<JsonValue> {
+    async fn read_edge_properties(&self, msg: Edge) -> Result<Properties> {
         let trans = self.transaction()?;
         let edge_key: EdgeKey = msg.into();
         let query = SpecificEdgeQuery {
@@ -403,12 +412,15 @@ impl sunshine_core::Store for Store {
             _ => unreachable!(),
         };
 
-        Ok(properties)
+        match properties {
+            JsonValue::Object(props) => Ok(props),
+            _ => unreachable!(),
+        }
     }
 
     async fn update_edge(
         &self,
-        (edge, properties): (Edge, JsonValue),
+        (edge, properties): (Edge, Properties),
         graph_id: GraphId,
     ) -> Result<Msg> {
         let prev_state = self.read_node(edge.id).await?;
@@ -423,9 +435,8 @@ impl sunshine_core::Store for Store {
             inner: query.into(),
             name: VERTEX_PROPERTY_HOLDER.into(),
         };
-
         trans
-            .set_edge_properties(query, &properties)
+            .set_edge_properties(query, &JsonValue::Object(properties))
             .map_err(Error::UpdateEdgeProperties)?;
 
         Ok(Msg::MutateState(MutateState {

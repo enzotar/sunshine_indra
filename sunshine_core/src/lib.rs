@@ -3,12 +3,13 @@ use uuid::Uuid;
 
 pub mod error;
 pub mod msg;
+pub mod properties;
 
 pub use error::{Error, Result};
 
 use msg::{
     CreateEdge, Edge, EdgeId, Graph, GraphId, Msg, MutateState, MutateStateKind, Node, NodeId,
-    Query, RecreateNode, Reply,
+    Properties, Query, RecreateNode, Reply,
 };
 
 #[derive(Debug)]
@@ -119,7 +120,9 @@ pub trait Store: Send + Sync {
 
     async fn execute_read_only(&self, msg: Query) -> Result<Reply> {
         match msg {
-            Query::ReadEdgeProperties(msg) => self.read_edge_properties(msg).await.map(Reply::Json),
+            Query::ReadEdgeProperties(msg) => {
+                self.read_edge_properties(msg).await.map(Reply::Properties)
+            }
             Query::ReadNode(msg) => self.read_node(msg).await.map(Reply::Node),
             Query::ReadGraph(read_graph) => self.read_graph(read_graph).await.map(Reply::Graph),
             Query::ListGraphs => self.list_graphs().await.map(Reply::NodeList),
@@ -128,7 +131,7 @@ pub trait Store: Send + Sync {
 
     async fn update_state_id(&self, graph_id: GraphId) -> Result<()>;
 
-    async fn create_graph(&self, properties: JsonValue) -> Result<(Msg, GraphId)> {
+    async fn create_graph(&self, properties: Properties) -> Result<(Msg, GraphId)> {
         self.create_graph_with_id(indradb::util::generate_uuid_v1(), properties)
             .await
     }
@@ -136,31 +139,31 @@ pub trait Store: Send + Sync {
     async fn create_graph_with_id(
         &self,
         graph_id: GraphId,
-        properties: JsonValue,
+        properties: Properties,
     ) -> Result<(Msg, GraphId)>;
 
     async fn list_graphs(&self) -> Result<Vec<Node>>;
 
     async fn read_graph(&self, graph_id: GraphId) -> Result<Graph>;
 
-    async fn create_node(&self, args: (GraphId, JsonValue)) -> Result<(Msg, NodeId)>;
+    async fn create_node(&self, args: (GraphId, Properties)) -> Result<(Msg, NodeId)>;
 
     async fn read_node(&self, node_id: NodeId) -> Result<Node>;
 
-    async fn update_node(&self, args: (NodeId, JsonValue), graph_id: GraphId) -> Result<Msg>;
+    async fn update_node(&self, args: (NodeId, Properties), graph_id: GraphId) -> Result<Msg>;
 
     async fn recreate_node(&self, recreate_node: RecreateNode, graph_id: GraphId) -> Result<Msg>;
 
-    async fn recreate_edge(&self, edge: Edge, properties: JsonValue) -> Result<()>;
+    async fn recreate_edge(&self, edge: Edge, properties: Properties) -> Result<()>;
 
     // deletes inbound and outbound edges as well
     async fn delete_node(&self, node_id: NodeId, graph_id: GraphId) -> Result<Msg>;
 
     async fn create_edge(&self, msg: CreateEdge, graph_id: GraphId) -> Result<(Msg, EdgeId)>;
 
-    async fn read_edge_properties(&self, msg: Edge) -> Result<JsonValue>;
+    async fn read_edge_properties(&self, msg: Edge) -> Result<Properties>;
 
-    async fn update_edge(&self, args: (Edge, JsonValue), graph_id: GraphId) -> Result<Msg>;
+    async fn update_edge(&self, args: (Edge, Properties), graph_id: GraphId) -> Result<Msg>;
 
     async fn delete_edge(&self, edge: Edge, graph_id: GraphId) -> Result<Msg>;
 }
