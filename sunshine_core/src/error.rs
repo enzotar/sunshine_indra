@@ -54,6 +54,8 @@ pub enum Error {
     DGraphError(String),
     #[error("error, operation isn't implemented.")]
     Unimplemented,
+    #[error("error, graph not found.")]
+    GraphNotFound,
 }
 
 impl From<uuid::Error> for Error {

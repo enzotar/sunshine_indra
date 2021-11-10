@@ -2,8 +2,6 @@
 // TODOs
 
 Dgraph 
-    create node,
-    create edge
 
 // delete graph
 // update graph

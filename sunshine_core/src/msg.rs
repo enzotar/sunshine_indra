@@ -112,7 +112,7 @@ impl From<Edge> for EdgeKey {
 #[derive(Debug, Clone)]
 pub enum Reply {
     Id(Uuid),
-    NodeList(Vec<Node>),
+    NodeList(Vec<(NodeId, Properties)>),
     Node(Node),
     Edge(Edge),
     Graph(Graph),

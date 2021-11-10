@@ -121,7 +121,7 @@ impl sunshine_core::Store for Store {
         Ok((Msg::DeleteGraph(node_id), node_id))
     }
 
-    async fn list_graphs(&self) -> Result<Vec<Node>> {
+    async fn list_graphs(&self) -> Result<Vec<(NodeId, Properties)>> {
         let trans = self.transaction()?;
         let futures = trans
             .get_vertices(RangeVertexQuery {
@@ -131,7 +131,10 @@ impl sunshine_core::Store for Store {
             })
             .map_err(Error::GetNodes)?
             .into_iter()
-            .map(|node| async move { self.read_node(node.id).await });
+            .map(|node| async move {
+                let node = self.read_node(node.id).await?;
+                Ok((node.node_id, node.properties))
+            });
 
         futures::future::try_join_all(futures).await
     }

@@ -142,7 +142,7 @@ pub trait Store: Send + Sync {
         properties: Properties,
     ) -> Result<(Msg, GraphId)>;
 
-    async fn list_graphs(&self) -> Result<Vec<Node>>;
+    async fn list_graphs(&self) -> Result<Vec<(NodeId, Properties)>>;
 
     async fn read_graph(&self, graph_id: GraphId) -> Result<Graph>;
 
