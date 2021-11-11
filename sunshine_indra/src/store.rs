@@ -158,14 +158,15 @@ impl sunshine_core::Store for Store {
         Ok(Graph { nodes, state_id })
     }
 
-    async fn create_node(
+    async fn create_node_with_id(
         &self,
+        node_id: NodeId,
         (graph_id, properties): (GraphId, Properties),
-    ) -> Result<(Msg, NodeId)> {
+    ) -> Result<Msg> {
         let trans = self.transaction()?;
 
         let node_type = Type::new(VERTEX_TYPE).map_err(Error::CreateType)?;
-        let node: Vertex = Vertex::new(node_type);
+        let node: Vertex = Vertex::with_id(node_id, node_type);
         trans.create_vertex(&node).map_err(Error::CreateNode)?;
 
         let vertex_query = SpecificVertexQuery::single(node.id).into();
@@ -187,13 +188,10 @@ impl sunshine_core::Store for Store {
             return Err(Error::CreateEdgeFailed);
         }
 
-        Ok((
-            Msg::MutateState(MutateState {
-                graph_id,
-                kind: MutateStateKind::DeleteNode(node.id),
-            }),
-            node.id,
-        ))
+        Ok(Msg::MutateState(MutateState {
+            graph_id,
+            kind: MutateStateKind::DeleteNode(node.id),
+        }))
     }
 
     async fn read_node(&self, node_id: NodeId) -> Result<Node> {
@@ -213,7 +211,15 @@ impl sunshine_core::Store for Store {
             .map_err(Error::GetNodes)?;
 
         let properties = match properties.len() {
-            1 => properties.pop().unwrap().props.pop().unwrap().value,
+            1 => {
+                properties
+                    .pop()
+                    .ok_or(Error::NodeNotFound)?
+                    .props
+                    .pop()
+                    .unwrap()
+                    .value
+            }
             _ => unreachable!(),
         };
 

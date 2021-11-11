@@ -85,6 +85,10 @@ pub trait Store: Send + Sync {
                 .create_node((graph_id, properties))
                 .await
                 .map(|(undo_msg, node_id)| (undo_msg, Reply::Id(node_id)))?,
+            MutateStateKind::CreateNodeWithId((node_id, properties)) => self
+                .create_node_with_id(node_id, (graph_id, properties))
+                .await
+                .map(|undo_msg| (undo_msg, Reply::Empty))?,
             MutateStateKind::RecreateNode(recreate_node) => {
                 let node_id = recreate_node.node_id;
                 self.recreate_node(recreate_node, graph_id)
@@ -146,7 +150,19 @@ pub trait Store: Send + Sync {
 
     async fn read_graph(&self, graph_id: GraphId) -> Result<Graph>;
 
-    async fn create_node(&self, args: (GraphId, Properties)) -> Result<(Msg, NodeId)>;
+    async fn create_node(&self, args: (GraphId, Properties)) -> Result<(Msg, NodeId)> {
+        let node_id = indradb::util::generate_uuid_v1();
+
+        self.create_node_with_id(node_id, args)
+            .await
+            .map(|msg| (msg, node_id))
+    }
+
+    async fn create_node_with_id(
+        &self,
+        node_id: NodeId,
+        (graph_id, properties): (GraphId, Properties),
+    ) -> Result<Msg>;
 
     async fn read_node(&self, node_id: NodeId) -> Result<Node>;
 

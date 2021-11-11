@@ -56,6 +56,8 @@ pub enum Error {
     Unimplemented,
     #[error("error, graph not found.")]
     GraphNotFound,
+    #[error("error, node not found.")]
+    NodeNotFound,
 }
 
 impl From<uuid::Error> for Error {

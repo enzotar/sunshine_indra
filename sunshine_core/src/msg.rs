@@ -25,6 +25,7 @@ pub struct MutateState {
 #[derive(Clone, Debug)]
 pub enum MutateStateKind {
     CreateNode(Properties),
+    CreateNodeWithId((NodeId, Properties)),
     RecreateNode(RecreateNode),
     UpdateNode((NodeId, Properties)),
     DeleteNode(NodeId),

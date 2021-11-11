@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -9,7 +10,7 @@ mod queries;
 mod responses;
 
 use queries::*;
-use responses::node::{Node as DNode, Root};
+use responses::{Node as DNode, QueryRoot};
 
 use sunshine_core::msg::{
     CreateEdge, Edge, EdgeId, Graph, GraphId, Msg, MutateState, MutateStateKind, Node, NodeId,
@@ -17,6 +18,8 @@ use sunshine_core::msg::{
 };
 
 use sunshine_core::{Error, Result};
+
+use crate::responses::UpsertRoot;
 // #[tokio::main]
 // pub async fn query() -> std::result::Result<DNode, Box<dyn std::error::Error>> {
 //     let client = reqwest::Client::new();
@@ -62,10 +65,11 @@ impl sunshine_core::Store for Store {
     }
 
     async fn update_state_id(&self, graph_id: GraphId) -> Result<()> {
-        self.json_req(
-            MUTATE,
-            &serde_json::json!({
-                "query": format!(r#"{{
+        let res: UpsertRoot = self
+            .json_req(
+                MUTATE,
+                &serde_json::json!({
+                    "query": format!(r#"{{
                 q(func: eq(indra_id,"{}")) {{
                 u as uid
                 s as state_id
@@ -73,13 +77,17 @@ impl sunshine_core::Store for Store {
                 indra_id
                 }}
             }}"#, graph_id),
-                "set": {
-                    "uid": "uid(u)",
-                    "state_id": "val(n)",
-                },
-            }),
-        )
-        .await?;
+                    "set": {
+                        "uid": "uid(u)",
+                        "state_id": "val(n)",
+                    },
+                }),
+            )
+            .await?;
+
+        if res.data.queries.get("q").unwrap().len() < 1 {
+            return Err(Error::GraphNotFound);
+        }
 
         Ok(())
     }
@@ -108,7 +116,7 @@ impl sunshine_core::Store for Store {
     }
 
     async fn list_graphs(&self) -> Result<Vec<(NodeId, Properties)>> {
-        let res = self
+        let res: QueryRoot = self
             .dql_req(
                 QUERY,
                 "{
@@ -121,13 +129,16 @@ impl sunshine_core::Store for Store {
             )
             .await?;
 
-        res.into_iter()
+        res.data
+            .get("q")
+            .unwrap()
+            .into_iter()
             .map(|node| Ok((Uuid::from_str(&node.indra_id)?, node.properties)))
             .collect::<Result<Vec<_>>>()
     }
 
     async fn read_graph(&self, graph_id: GraphId) -> Result<Graph> {
-        let res = self
+        let res: QueryRoot = self
             .dql_req(
                 QUERY,
                 format!(
@@ -144,14 +155,14 @@ impl sunshine_core::Store for Store {
             )
             .await?;
 
-        if res.len() < 1 {
+        if res.data.get("q").unwrap().len() < 1 {
             return Err(Error::GraphNotFound);
         }
 
-        let node = &res[0];
+        let node = &res.data.get("q").unwrap()[0];
 
         let nodes = match node.link.as_ref() {
-            Some(nodes) => todo!(),
+            Some(nodes) => todo!(), //nodes.iter().map(|node| Node {}),
             None => Vec::new(),
         };
 
@@ -161,32 +172,114 @@ impl sunshine_core::Store for Store {
         })
     }
 
-    // https://paulx.dev/blog/2021/01/14/programming-on-solana-an-introduction/
-
-    async fn create_node(
+    async fn create_node_with_id(
         &self,
+        indra_id: NodeId,
         (graph_id, properties): (GraphId, Properties),
-    ) -> Result<(Msg, NodeId)> {
-        todo!();
+    ) -> Result<Msg> {
+        let res: UpsertRoot = self
+            .json_req(
+                MUTATE,
+                &serde_json::json!({
+                    "query": format!(r#"{{
+                        q(func: eq(indra_id,"{}")) {{
+                        u as uid
+                        indra_id
+                    }}
+            }}"#, graph_id),
+                    "set": {
+                        "uid": "uid(u)",
+                        "link": MutateCreateNode {
+                            indra_id: indra_id.to_string(),
+                            properties,
+                        }
+                    },
+                }),
+            )
+            .await?;
+
+        // a -> b -> c -> a
+        //   b -> a
+
+        // graph_root { a { b }, b { c, a }, c { a } }
+
+        if res.data.queries.get("q").unwrap().len() < 1 {
+            return Err(Error::GraphNotFound);
+        }
+
+        Ok(Msg::MutateState(MutateState {
+            graph_id,
+            kind: MutateStateKind::DeleteNode(indra_id),
+        }))
     }
 
     async fn read_node(&self, node_id: NodeId) -> Result<Node> {
-        todo!();
+        let res: QueryRoot = self
+            .dql_req(
+                QUERY,
+                format!(
+                    "{{
+                outbound(func: eq(indra_id, \"{}\")) {{
+                    uid
+                    indra_id
+                    link {{
+                        uid
+                        indra_id
+                    }}
+                }}
+
+                inbound(func: eq(indra_id, \"{}\")) {{
+                    uid
+                    indra_id
+                    ~link {{
+                        uid
+                        indra_id
+                    }}
+                }}
+            }}",
+                    node_id //pass another
+                ),
+            )
+            .await?;
+
+        let outbound = res.data.get("outbound").unwrap();
+        let inbound = res.data.get("inbound").unwrap();
+
+        if outbound.len() < 1 {
+            return Err(Error::NodeNotFound);
+        }
+
+        let outbound = &outbound[0];
+
+        if inbound.len() < 1 {
+            return Err(Error::NodeNotFound);
+        }
+
+        let inbound = &inbound[0];
+
+        let outbound_edges = match outbound.link.as_ref() {
+            Some(nodes) => todo!(),
+            None => Vec::new(),
+        };
+
+        let inbound_edges = match inbound.link.as_ref() {
+            Some(nodes) => todo!(),
+            None => Vec::new(),
+        };
+
+        Ok(Node {
+            node_id,
+            properties: outbound.properties,
+            outbound_edges: Vec::new(),
+            inbound_edges: Vec::new(),
+        })
     }
 
-    async fn update_node(
-        &self,
-        (node_id, value): (NodeId, Properties),
-        graph_id: GraphId,
-    ) -> Result<Msg> {
+    async fn update_node(&self, args: (NodeId, Properties), graph_id: GraphId) -> Result<Msg> {
         todo!();
     }
 
     async fn recreate_node(&self, recreate_node: RecreateNode, graph_id: GraphId) -> Result<Msg> {
-        todo!();
-    }
-
-    async fn recreate_edge(&self, edge: Edge, properties: Properties) -> Result<()> {
         todo!();
     }
 
@@ -238,7 +331,11 @@ impl Store {
         }
     }
 
-    async fn json_req<B: Serialize>(&self, url_part: &str, body: &B) -> Result<()> {
+    async fn json_req<B: Serialize, T: DeserializeOwned>(
+        &self,
+        url_part: &str,
+        body: &B,
+    ) -> Result<T> {
         let url = self.base_url.to_owned() + url_part;
 
         let res = self
@@ -250,12 +347,14 @@ impl Store {
             .await
             .map_err(Error::HttpClientError)?;
 
-        Self::check_err_response(res).await?;
-
-        Ok(())
+        Self::parse_response(res).await
     }
 
-    async fn dql_req<S: Into<String>>(&self, url_part: &str, body: S) -> Result<Vec<DNode>> {
+    async fn dql_req<S: Into<String>, T: DeserializeOwned>(
+        &self,
+        url_part: &str,
+        body: S,
+    ) -> Result<T> {
         let url = self.base_url.to_owned() + url_part;
 
         let res = self
@@ -285,14 +384,12 @@ impl Store {
         Ok(json)
     }
 
-    async fn parse_response(res: reqwest::Response) -> Result<Vec<DNode>> {
+    async fn parse_response<T: DeserializeOwned>(res: reqwest::Response) -> Result<T> {
         let json = Self::check_err_response(res).await?;
 
         println!("{:#?}", json);
 
-        let root: Root = serde_json::from_value(json).map_err(Error::JsonError)?;
-
-        Ok(root.data.q)
+        serde_json::from_value(json).map_err(Error::JsonError)
     }
 }
 
@@ -319,7 +416,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_update_state_id() {
         make_store()
-            .update_state_id(Uuid::from_str("2ac209c6-40ce-11ec-9884-8b4b20e8c2eb").unwrap())
+            .update_state_id(Uuid::from_str("0d0bd4ee-40f0-11ec-973a-0242ac130003").unwrap())
             .await
             .unwrap();
     }
@@ -350,10 +447,34 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn read_graph() {
+    async fn test_read_graph() {
         dbg!(
             make_store()
                 .read_graph(Uuid::from_str("2ac209c6-40ce-11ec-9884-8b4b20e8c2eb").unwrap())
+                .await
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_create_node_with_id() {
+        let properties = json!({
+            "name":"first Node",
+            "age": 13
+        });
+        let properties = match properties {
+            JsonValue::Object(props) => props,
+            _ => unreachable!(),
+        };
+
+        dbg!(
+            make_store()
+                .create_node_with_id(
+                    Uuid::from_str("5dd79972-4329-11ec-81d3-0242ac130003").unwrap(),
+                    (
+                        Uuid::from_str("0d0bd4ee-40f0-11ec-973a-0242ac130003").unwrap(),
+                        properties
+                    )
+                )
                 .await
         );
     }
