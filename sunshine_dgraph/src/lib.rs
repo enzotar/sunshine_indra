@@ -133,7 +133,7 @@ impl sunshine_core::Store for Store {
             .get("q")
             .unwrap()
             .into_iter()
-            .map(|node| Ok((Uuid::from_str(&node.indra_id)?, node.properties)))
+            .map(|node| Ok((Uuid::from_str(&node.indra_id)?, node.properties.clone())))
             .collect::<Result<Vec<_>>>()
     }
 
@@ -237,7 +237,7 @@ impl sunshine_core::Store for Store {
                     }}
                 }}
             }}",
-                    node_id //pass another
+                    node_id, node_id
                 ),
             )
             .await?;
@@ -257,19 +257,19 @@ impl sunshine_core::Store for Store {
 
         let inbound = &inbound[0];
 
-        let outbound_edges = match outbound.link.as_ref() {
+        let outbound_edges: Vec<Edge> = match outbound.link.as_ref() {
             Some(nodes) => todo!(),
             None => Vec::new(),
         };
 
-        let inbound_edges = match inbound.link.as_ref() {
+        let inbound_edges: Vec<Edge> = match inbound.link.as_ref() {
             Some(nodes) => todo!(),
             None => Vec::new(),
         };
 
         Ok(Node {
             node_id,
-            properties: outbound.properties,
+            properties: outbound.properties.clone(),
             outbound_edges: Vec::new(),
             inbound_edges: Vec::new(),
         })
@@ -293,6 +293,9 @@ impl sunshine_core::Store for Store {
     }
 
     async fn read_edge_properties(&self, msg: Edge) -> Result<Properties> {
+        todo!();
+    }
+    async fn recreate_edge(&self, edge: Edge, properties: Properties) -> Result<()> {
         todo!();
     }
 
