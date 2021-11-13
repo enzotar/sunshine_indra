@@ -7,9 +7,9 @@ use uuid::Uuid;
 pub type Properties = serde_json::Map<String, JsonValue>;
 
 #[derive(Clone, Debug)]
-pub enum Msg {
-    MutateState(MutateState),
-    Query(Query),
+pub enum Action {
+    Mutate(GraphId, MutateKind),
+    Query(QueryKind),
     CreateGraph(Properties),
     CreateGraphWithId(GraphId, Properties),
     DeleteGraph(GraphId),
@@ -17,13 +17,13 @@ pub enum Msg {
     Redo,
 }
 
+// #[derive(Clone, Debug)]
+// pub struct MutateState {
+//     pub kind: MutateStateKind,
+//     pub graph_id: GraphId,
+// }
 #[derive(Clone, Debug)]
-pub struct MutateState {
-    pub kind: MutateStateKind,
-    pub graph_id: GraphId,
-}
-#[derive(Clone, Debug)]
-pub enum MutateStateKind {
+pub enum MutateKind {
     CreateNode(Properties),
     CreateNodeWithId((NodeId, Properties)),
     RecreateNode(RecreateNode),
@@ -35,7 +35,7 @@ pub enum MutateStateKind {
 }
 
 #[derive(Clone, Debug)]
-pub enum Query {
+pub enum QueryKind {
     ListGraphs,       // graph node list
     ReadNode(NodeId), //node properties and edges
     ReadEdgeProperties(Edge),

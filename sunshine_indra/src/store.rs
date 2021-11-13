@@ -1,18 +1,18 @@
 use indradb::{
-    Datastore, EdgeKey, EdgePropertyQuery, RangeVertexQuery, RocksdbDatastore, SpecificEdgeQuery,
-    SpecificVertexQuery, Transaction, Type, Vertex, VertexPropertyQuery, VertexQuery,
-    VertexQueryExt,
+    Datastore as IndraDatastore, EdgeKey, EdgePropertyQuery, RangeVertexQuery, RocksdbDatastore,
+    SpecificEdgeQuery, SpecificVertexQuery, Transaction, Type, Vertex, VertexPropertyQuery,
+    VertexQuery, VertexQueryExt,
 };
 
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
+use sunshine_core::error::*;
 use sunshine_core::msg::{
-    CreateEdge, Edge, EdgeId, Graph, GraphId, Msg, MutateState, MutateStateKind, Node, NodeId,
-    Properties, Query, RecreateNode, Reply,
+    Action, CreateEdge, Edge, EdgeId, Graph, GraphId, MutateKind, Node, NodeId, Properties,
+    RecreateNode,
 };
-
-use sunshine_core::{Error, Result};
+use sunshine_core::store::Datastore;
 
 const VERTEX_PROPERTY_HOLDER: &str = "data";
 const VERTEX_TYPE: &str = "node";
@@ -20,35 +20,41 @@ const VERTEX_TYPE: &str = "node";
 const GRAPH_ROOT_TYPE: &str = "_root_type";
 const STATE_ID_PROPERTY: &str = "_state_id_prop";
 
-pub struct Store {
-    datastore: RocksdbDatastore,
-    root_node_type: Type,
-    undo: Vec<Msg>,
-    redo: Vec<Msg>,
-    history: Vec<Msg>,
+pub struct DbConfig {
+    pub db_path: String,
 }
 
-impl Store {
-    pub fn new(cfg: &Config) -> Result<Store> {
-        let datastore =
-            RocksdbDatastore::new(&cfg.db_path, None).map_err(Error::DatastoreCreate)?;
-        let store = Store {
-            datastore,
+#[derive(Debug)]
+pub struct DB {
+    source: RocksdbDatastore,
+    root_node_type: Type,
+    undo: Vec<Action>,
+    redo: Vec<Action>,
+    history: Vec<Action>,
+}
+
+impl DB {
+    pub fn new(cfg: &DbConfig) -> Result<DB> {
+        let rocks_db = RocksdbDatastore::new(&cfg.db_path, None).map_err(Error::DatastoreCreate)?;
+        let db = DB {
+            source: rocks_db,
             root_node_type: Type::new(GRAPH_ROOT_TYPE).unwrap(),
             undo: Vec::new(),
             redo: Vec::new(),
             history: Vec::new(),
         };
-        Ok(store)
+        Ok(db)
     }
 
     fn transaction(&self) -> Result<impl Transaction> {
-        self.datastore
-            .transaction()
-            .map_err(Error::CreateTransaction)
+        self.source.transaction().map_err(Error::CreateTransaction)
     }
 
-    async fn create_graph_root(&self, graph_id: GraphId, properties: Properties) -> Result<NodeId> {
+    pub async fn create_graph_root(
+        &self,
+        graph_id: GraphId,
+        properties: Properties,
+    ) -> Result<NodeId> {
         let trans = self.transaction()?;
 
         let node_type = Type::new(GRAPH_ROOT_TYPE).map_err(Error::CreateType)?;
@@ -69,21 +75,17 @@ impl Store {
     }
 }
 
-pub struct Config {
-    pub db_path: String,
-}
-
 #[async_trait::async_trait]
-impl sunshine_core::Store for Store {
-    fn undo_buf(&mut self) -> &mut Vec<Msg> {
+impl Datastore for DB {
+    fn undo_buf(&mut self) -> &mut Vec<Action> {
         &mut self.undo
     }
 
-    fn redo_buf(&mut self) -> &mut Vec<Msg> {
+    fn redo_buf(&mut self) -> &mut Vec<Action> {
         &mut self.redo
     }
 
-    fn history_buf(&mut self) -> &mut Vec<Msg> {
+    fn history_buf(&mut self) -> &mut Vec<Action> {
         &mut self.history
     }
 
@@ -111,14 +113,14 @@ impl sunshine_core::Store for Store {
         &self,
         graph_id: GraphId,
         properties: Properties,
-    ) -> Result<(Msg, GraphId)> {
+    ) -> Result<(Action, GraphId)> {
         let mut properties = properties;
         let state_id = JsonValue::Number(serde_json::Number::from(0u64));
         properties.insert(STATE_ID_PROPERTY.into(), state_id);
 
         let node_id = self.create_graph_root(graph_id, properties).await?;
 
-        Ok((Msg::DeleteGraph(node_id), node_id))
+        Ok((Action::DeleteGraph(node_id), node_id))
     }
 
     async fn list_graphs(&self) -> Result<Vec<(NodeId, Properties)>> {
@@ -162,7 +164,7 @@ impl sunshine_core::Store for Store {
         &self,
         node_id: NodeId,
         (graph_id, properties): (GraphId, Properties),
-    ) -> Result<Msg> {
+    ) -> Result<Action> {
         let trans = self.transaction()?;
 
         let node_type = Type::new(VERTEX_TYPE).map_err(Error::CreateType)?;
@@ -188,10 +190,7 @@ impl sunshine_core::Store for Store {
             return Err(Error::CreateEdgeFailed);
         }
 
-        Ok(Msg::MutateState(MutateState {
-            graph_id,
-            kind: MutateStateKind::DeleteNode(node.id),
-        }))
+        Ok(Action::Mutate(graph_id, MutateKind::DeleteNode(node.id)))
     }
 
     async fn read_node(&self, node_id: NodeId) -> Result<Node> {
@@ -256,7 +255,7 @@ impl sunshine_core::Store for Store {
         &self,
         (node_id, properties): (NodeId, Properties),
         graph_id: GraphId,
-    ) -> Result<Msg> {
+    ) -> Result<Action> {
         let trans = self.transaction()?;
 
         let query = SpecificVertexQuery { ids: vec![node_id] };
@@ -273,13 +272,17 @@ impl sunshine_core::Store for Store {
             )
             .map_err(Error::UpdateNode)?;
 
-        Ok(Msg::MutateState(MutateState {
+        Ok(Action::Mutate(
             graph_id,
-            kind: MutateStateKind::UpdateNode((node_id, prev_state.properties)),
-        }))
+            MutateKind::UpdateNode((node_id, prev_state.properties)),
+        ))
     }
 
-    async fn recreate_node(&self, recreate_node: RecreateNode, graph_id: GraphId) -> Result<Msg> {
+    async fn recreate_node(
+        &self,
+        recreate_node: RecreateNode,
+        graph_id: GraphId,
+    ) -> Result<Action> {
         let trans = self.transaction()?;
 
         let node_type = Type::new(VERTEX_TYPE).map_err(Error::CreateType)?;
@@ -306,10 +309,10 @@ impl sunshine_core::Store for Store {
 
         futures::future::try_join_all(fut).await?;
 
-        Ok(Msg::MutateState(MutateState {
+        Ok(Action::Mutate(
             graph_id,
-            kind: MutateStateKind::DeleteNode(recreate_node.node_id),
-        }))
+            MutateKind::DeleteNode(recreate_node.node_id),
+        ))
     }
 
     async fn recreate_edge(&self, edge: Edge, properties: Properties) -> Result<()> {
@@ -331,7 +334,7 @@ impl sunshine_core::Store for Store {
     }
 
     // deletes inbound and outbound edges as well
-    async fn delete_node(&self, node_id: NodeId, graph_id: GraphId) -> Result<Msg> {
+    async fn delete_node(&self, node_id: NodeId, graph_id: GraphId) -> Result<Action> {
         let trans = self.transaction()?;
         let query = SpecificVertexQuery { ids: vec![node_id] };
 
@@ -361,17 +364,17 @@ impl sunshine_core::Store for Store {
 
         let edges = futures::future::try_join_all(edges).await?;
 
-        Ok(Msg::MutateState(MutateState {
+        Ok(Action::Mutate(
             graph_id,
-            kind: MutateStateKind::RecreateNode(RecreateNode {
+            MutateKind::RecreateNode(RecreateNode {
                 node_id,
                 properties: deleted_node.properties,
                 edges,
             }),
-        }))
+        ))
     }
 
-    async fn create_edge(&self, msg: CreateEdge, graph_id: GraphId) -> Result<(Msg, EdgeId)> {
+    async fn create_edge(&self, msg: CreateEdge, graph_id: GraphId) -> Result<(Action, EdgeId)> {
         let trans = self.transaction()?;
         let edge_id = indradb::util::generate_uuid_v1();
         let edge_type = Type::new(edge_id.to_string()).map_err(Error::CreateType)?;
@@ -393,10 +396,10 @@ impl sunshine_core::Store for Store {
             .map_err(Error::SetEdgeProperties)?;
 
         Ok((
-            Msg::MutateState(MutateState {
+            Action::Mutate(
                 graph_id,
-                kind: MutateStateKind::DeleteEdge(Edge::try_from(edge_key).unwrap()),
-            }),
+                MutateKind::DeleteEdge(Edge::try_from(edge_key).unwrap()),
+            ),
             edge_id,
         ))
     }
@@ -431,7 +434,7 @@ impl sunshine_core::Store for Store {
         &self,
         (edge, properties): (Edge, Properties),
         graph_id: GraphId,
-    ) -> Result<Msg> {
+    ) -> Result<Action> {
         let prev_state = self.read_node(edge.id).await?;
 
         let trans = self.transaction()?;
@@ -448,13 +451,13 @@ impl sunshine_core::Store for Store {
             .set_edge_properties(query, &JsonValue::Object(properties))
             .map_err(Error::UpdateEdgeProperties)?;
 
-        Ok(Msg::MutateState(MutateState {
+        Ok(Action::Mutate(
             graph_id,
-            kind: MutateStateKind::UpdateEdge((edge, prev_state.properties)),
-        }))
+            MutateKind::UpdateEdge((edge, prev_state.properties)),
+        ))
     }
 
-    async fn delete_edge(&self, edge: Edge, graph_id: GraphId) -> Result<Msg> {
+    async fn delete_edge(&self, edge: Edge, graph_id: GraphId) -> Result<Action> {
         let trans = self.transaction()?;
         let edge_key = edge.into();
         let query = SpecificEdgeQuery {
@@ -462,14 +465,14 @@ impl sunshine_core::Store for Store {
         };
         trans.delete_edges(query).map_err(Error::DeleteEdge)?;
         let properties = self.read_edge_properties(edge).await?;
-        Ok(Msg::MutateState(MutateState {
-            kind: MutateStateKind::CreateEdge(CreateEdge {
+        Ok(Action::Mutate(
+            graph_id,
+            MutateKind::CreateEdge(CreateEdge {
                 to: edge.to,
                 from: edge.from,
                 properties,
             }),
-            graph_id,
-        }))
+        ))
     }
 }
 
@@ -604,14 +607,14 @@ impl sunshine_core::Store for Store {
 //         */
 //     }
 // }
-/*
-fn map_reply_tuple<T, F: Fn(T) -> Reply>(
-    res: Result<(Msg, T)>,
-    reply_fn: F,
-) -> Result<(Msg, Reply)> {
-    match res {
-        Ok((msg, reply)) => Ok((msg, reply_fn(reply))),
-        Err(e) => Err(e),
-    }
-}
-*/
+// /*
+// fn map_reply_tuple<T, F: Fn(T) -> Reply>(
+//     res: Result<(Msg, T)>,
+//     reply_fn: F,
+// ) -> Result<(Msg, Reply)> {
+//     match res {
+//         Ok((msg, reply)) => Ok((msg, reply_fn(reply))),
+//         Err(e) => Err(e),
+//     }
+// }
+// */
