@@ -20,6 +20,10 @@ const VERTEX_TYPE: &str = "node";
 const GRAPH_ROOT_TYPE: &str = "_root_type";
 const STATE_ID_PROPERTY: &str = "_state_id_prop";
 
+pub fn generate_uuid_v1() -> Uuid {
+    indradb::util::generate_uuid_v1()
+}
+
 pub struct DbConfig {
     pub db_path: String,
 }

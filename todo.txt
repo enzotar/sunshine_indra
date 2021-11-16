@@ -5,8 +5,8 @@ Dgraph
 
 // delete graph
 // update graph
-// undo and redo in indra and cloud??
 // clear database/ init
+// undo and redo in indra and cloud??
 
 // unit tests
 // ui initialization
