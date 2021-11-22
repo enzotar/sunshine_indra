@@ -3,5 +3,5 @@ members = [
     "sunshine_core",
     "sunshine_indra",
     "sunshine_dgraph",
-    "sunshine_local"
+    "sunshine_local",
 ]

@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
@@ -41,7 +42,7 @@ use sunshine_core::msg::*;
 const MUTATE: &str = "/mutate?commitNow=true";
 const QUERY: &str = "/query";
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Datastore for Store {
     fn undo_buf(&mut self) -> &mut Vec<Action> {
         &mut self.undo

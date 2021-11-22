@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use uuid::Uuid;
 
 pub use crate::error::{Error, Result};
@@ -14,7 +15,7 @@ pub enum Operation {
     Other,
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 pub trait Datastore: Send + Sync {
     fn undo_buf(&mut self) -> &mut Vec<Action>;
 

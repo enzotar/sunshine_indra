@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use indradb::{
     Datastore as IndraDatastore, EdgeKey, EdgePropertyQuery, RangeVertexQuery, RocksdbDatastore,
     SpecificEdgeQuery, SpecificVertexQuery, Transaction, Type, Vertex, VertexPropertyQuery,
@@ -79,7 +80,7 @@ impl DB {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Datastore for DB {
     fn undo_buf(&mut self) -> &mut Vec<Action> {
         &mut self.undo
